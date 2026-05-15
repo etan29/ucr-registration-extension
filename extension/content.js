@@ -165,8 +165,21 @@
     GPA: "gpa",
     RMP: "rmp",
     DIFF: "diff",
-    AI: "ai",
   };
+
+  const UCRD_JUMPER_META = [
+    { tab: UCRD_TAB.GPA, label: "Grades", iconGold: "grades-gold.svg", iconIdle: "grades-black.svg" },
+    { tab: UCRD_TAB.RMP, label: "RMP", iconGold: "rmp-gold.svg", iconIdle: "rmp-black.svg" },
+    { tab: UCRD_TAB.DIFF, label: "Reviews", iconGold: "reviews-gold.svg", iconIdle: "reviews-black.svg" },
+  ];
+
+  function ucrdExtUrl(path) {
+    try {
+      return chrome.runtime.getURL(path);
+    } catch {
+      return path;
+    }
+  }
 
   /** Letter-grade columns on AggregateGradeDistribution / GradeDistribution (GraphQL field names). */
   const GRADE_LETTER_FIELDS = [
@@ -188,6 +201,15 @@
   const UCRD_RMP_SEARCH = "https://www.ratemyprofessors.com/search/professors/1076";
   const UCRD_GRADES_SHEET =
     "https://docs.google.com/spreadsheets/d/1qiy_Oi8aFiPmL4QSTR3zHe74kmvc6e_159L1mAUUlU0/edit";
+  const UCRD_MYCLASSGRADES = "https://myclassgrades.com/school/ucr";
+  const UCRD_FEEDBACK_FORM =
+    "https://docs.google.com/forms/d/e/1FAIpQLSdHFrDnddK4DoeNAehsgsylWoyLCwTuOZLsHDPUz3bK7heLEw/viewform?usp=publish-editor";
+
+  function renderMyClassGradesFootLink() {
+    return `<p class="ucrd-gpa-muted ucrd-gpa-foot"><a class="ucrd-ext-link" href="${escapeHtml(
+      UCRD_MYCLASSGRADES
+    )}" target="_blank" rel="noreferrer">Open MyClassGrades</a></p>`;
+  }
 
   function clamp01(n) {
     return Math.max(0, Math.min(1, Number(n) || 0));
@@ -306,7 +328,6 @@
       .join("");
     return [
       '<div class="ucrd-rmp-dist">',
-      '<h3 class="ucrd-gpa-subhead">Rating distribution</h3>',
       '<div class="ucrd-rmp-dist-rows">',
       bars,
       "</div></div>",
@@ -338,10 +359,26 @@
           .join("") +
         "</div>"
       : "";
-    const courseBadge = opts.courseMatch
-      ? '<span class="ucrd-rmp-course-badge">This course</span>'
-      : "";
     const dateStr = formatRmpReviewDate(review.date);
+    const showClass = !opts.courseMatch && review.class;
+    const headBits = [];
+    if (showClass) {
+      headBits.push(
+        '<strong class="ucrd-rmp-review-class">',
+        escapeHtml(review.class),
+        "</strong>"
+      );
+    }
+    if (dateStr) {
+      headBits.push(
+        '<span class="ucrd-rmp-review-date">',
+        escapeHtml(dateStr),
+        "</span>"
+      );
+    }
+    const headHtml = headBits.length
+      ? '<div class="ucrd-rmp-review-head">' + headBits.join("") + "</div>"
+      : "";
     return [
       '<article class="ucrd-rmp-review',
       opts.courseMatch ? " ucrd-rmp-review-match" : "",
@@ -360,15 +397,7 @@
       escapeHtml(difficulty || "—"),
       "</span></div></div>",
       '<div class="ucrd-rmp-review-body">',
-      '<div class="ucrd-rmp-review-head">',
-      '<strong class="ucrd-rmp-review-class">',
-      escapeHtml(review.class || "—"),
-      "</strong>",
-      courseBadge,
-      dateStr
-        ? '<span class="ucrd-rmp-review-date">' + escapeHtml(dateStr) + "</span>"
-        : "",
-      "</div>",
+      headHtml,
       metaHtml,
       review.comment
         ? '<p class="ucrd-rmp-review-text">' + escapeHtml(review.comment) + "</p>"
@@ -380,12 +409,18 @@
 
   let ucrdModalEl = null;
   let ucrdModalEscapeHandler = null;
-  /** Row context for the open modal — used to refresh AI after API key / mode changes. */
+  /** Row context for the open modal. */
   let ucrdModalLoadCtx = null;
   /** Latest MyClassGrades payload for the open modal GPA panel (recent-terms filter). */
   let ucrdGpaPanelPayload = null;
   let ucrdMcgInstructor = "";
   let ucrdMcgTermKey = "";
+  /** Selected professor for Difficulty Database panel (`__all__` = all instructors / unfiltered). */
+  let ucrdSheetProfessor = "";
+  let ucrdScrollSpyObserver = null;
+  /** Suppresses scroll-spy jumper updates during smooth programmatic scroll. */
+  let ucrdJumperSpyPaused = false;
+  let ucrdJumperSpyUnlockCleanup = null;
 
   let ucrdGradeTipEl = null;
   let ucrdGradeTipTimer = null;
@@ -431,6 +466,10 @@
     top = Math.max(pad, Math.min(top, window.innerHeight - th - pad));
     tip.style.left = `${Math.round(left)}px`;
     tip.style.top = `${Math.round(top)}px`;
+  }
+
+  function isMcgDashboardBarChart(chart) {
+    return chart instanceof Element && chart.classList.contains("ucrd-mcg-bar-chart");
   }
 
   /** Letter-grade charts use flex `gap`; the gap is not inside `.ucrd-grade-col`, so resolve the column from pointer X/Y instead of mouseover/mouseout. */
@@ -491,7 +530,7 @@
           chart =
             under instanceof Element ? under.closest(".ucrd-grade-chart, .ucrd-mini-chart") : null;
         }
-        if (!chart) {
+        if (!chart || isMcgDashboardBarChart(chart)) {
           scheduleHideWhenOutsideChart();
           return;
         }
@@ -691,15 +730,36 @@
     return `<div class="ucrd-mini-chart" aria-hidden="true">${renderLetterBarsFromRows(rm, "ucrd-mini-bar", n)}</div>`;
   }
 
+  /** UCR brand palette — shared by MCG bar and donut charts (primary + secondary). */
   const MCG_CHART_BUCKETS = [
-    { label: "A", keys: ["gradeAPlus", "gradeA", "gradeAMinus"], color: "#6b9bd1" },
-    { label: "B", keys: ["gradeBPlus", "gradeB", "gradeBMinus"], color: "#8fad7a" },
-    { label: "C", keys: ["gradeCPlus", "gradeC", "gradeCMinus"], color: "#e8d070" },
-    { label: "D", keys: ["gradeDPlus", "gradeD", "gradeDMinus"], color: "#d4c4a8" },
-    { label: "F", keys: ["gradeF"], color: "#d4926a" },
-    { label: "P", keys: ["gradeS"], color: "#7fb069" },
-    { label: "NP", keys: ["gradeNp"], color: "#e09868" },
+    { label: "A", keys: ["gradeAPlus", "gradeA", "gradeAMinus"], color: "#003DA5" },
+    { label: "B", keys: ["gradeBPlus", "gradeB", "gradeBMinus"], color: "#8BB8D8" },
+    { label: "C", keys: ["gradeCPlus", "gradeC", "gradeCMinus"], color: "#FFC72C" },
+    { label: "D", keys: ["gradeDPlus", "gradeD", "gradeDMinus"], color: "#C4925A" },
+    { label: "F", keys: ["gradeF"], color: "#722F37" },
+    { label: "P", keys: ["gradeS"], color: "#7A8B4C" },
+    { label: "NP", keys: ["gradeNp"], color: "#3D5C6B" },
   ];
+
+  function mcgBucketForLetterLabel(label) {
+    const L = String(label || "")
+      .trim()
+      .toUpperCase();
+    if (L.startsWith("A")) return "A";
+    if (L.startsWith("B")) return "B";
+    if (L.startsWith("C")) return "C";
+    if (L.startsWith("D")) return "D";
+    if (L === "F") return "F";
+    if (L === "P" || L === "S") return "P";
+    if (L === "NP") return "NP";
+    return null;
+  }
+
+  function mcgColorForLetterLabel(label) {
+    const bucket = mcgBucketForLetterLabel(label);
+    const hit = MCG_CHART_BUCKETS.find((b) => b.label === bucket);
+    return hit?.color || "#9ca3af";
+  }
 
   function primaryProfessorLabel(ctx) {
     const raw = String(ctx?.primaryInstructorLabel ?? "").trim();
@@ -747,7 +807,7 @@
     if (instructorValue && instructorValue !== "__all__") {
       rows = rows.filter((r) => mcgRowMatchesInstructor(r, instructorValue));
     }
-    if (termKey) {
+    if (termKey && termKey !== "__all__") {
       rows = rows.filter((r) => mcgTermKey(r) === termKey);
     }
     return rows;
@@ -774,6 +834,16 @@
 
   function mcgBucketTotal(buckets) {
     return MCG_CHART_BUCKETS.reduce((s, b) => s + (Number(buckets[b.label]) || 0), 0);
+  }
+
+  /** Bar chart expects `{ rows: [{ label, count }] }`, not raw bucket counts. */
+  function mcgBucketChartModel(buckets) {
+    return {
+      rows: MCG_CHART_BUCKETS.map((b) => ({
+        label: b.label,
+        count: Number(buckets[b.label]) || 0,
+      })),
+    };
   }
 
   function mcgNiceYMax(n) {
@@ -846,12 +916,16 @@
 
   function mcgResolveTerm(payload, _instructorValue, requested) {
     const terms = mcgAllTerms(payload);
-    if (!terms.length) return "";
-    if (requested && terms.some((t) => t.key === requested)) return requested;
-    return terms[0].key;
+    if (!terms.length) return "__all__";
+    if (requested && requested !== "__default__") {
+      if (requested === "__all__") return "__all__";
+      if (terms.some((t) => t.key === requested)) return requested;
+    }
+    return "__all__";
   }
 
   function mcgTermLabel(terms, termKey) {
+    if (!termKey || termKey === "__all__") return "All Terms";
     const hit = terms.find((t) => t.key === termKey);
     return hit?.label || termKey || "Select term";
   }
@@ -914,15 +988,14 @@
       })
       .join("");
     const denom = letterTotal > 0 ? letterTotal : 1;
-    const n = rows.length;
-    const bars = rows.map((r, i) => {
+    const bars = rows.map((r) => {
       const count = Number(r.count) || 0;
       const pctBar = yMax ? Math.round((100 * count) / yMax) : 0;
       const pctStudents = ((100 * count) / denom).toFixed(1);
-      const cls = gradeBarColorClass(i, n);
+      const fillColor = mcgColorForLetterLabel(r.label);
       return `<div class="ucrd-grade-col ucrd-mcg-bar-col" role="presentation" data-ucrd-grade-label="${escapeHtml(
         r.label
-      )}" data-ucrd-grade-count="${count}" data-ucrd-grade-pct="${escapeHtml(pctStudents)}"><div class="ucrd-grade-bar-track"><div class="ucrd-mcg-bar-fill ${cls}" style="height:${pctBar}%"></div></div></div>`;
+      )}" data-ucrd-grade-count="${count}" data-ucrd-grade-pct="${escapeHtml(pctStudents)}"><div class="ucrd-grade-bar-track"><div class="ucrd-mcg-bar-fill" style="height:${pctBar}%;background-color:${escapeHtml(fillColor)}"></div></div></div>`;
     }).join("");
     const xLabels = rows
       .map((r) => `<span class="ucrd-mcg-xlabel">${escapeHtml(r.label)}</span>`)
@@ -946,7 +1019,8 @@
     return `<div class="ucrd-mcg-donut-wrap">
       <div class="ucrd-mcg-donut" style="${grad}" aria-hidden="true"></div>
       <div class="ucrd-mcg-donut-center">
-        <p class="ucrd-mcg-donut-line">Average Grade: <strong>${escapeHtml(letter)} (${escapeHtml(gpaStr)})</strong></p>
+        <p class="ucrd-mcg-donut-line">Average Grade:</p>
+        <p class="ucrd-mcg-donut-gpa" aria-label="Average grade and GPA">${escapeHtml(letter)} ${escapeHtml(gpaStr)}</p>
         <p class="ucrd-mcg-donut-line">Total Enrolled: <strong>${escapeHtml(enrolled)}</strong></p>
         <p class="ucrd-mcg-donut-sub">${escapeHtml(pnp)} enrolled as P/NP</p>
       </div>
@@ -961,13 +1035,17 @@
     const instructors = mcgUniqueInstructors(history);
     const instVal = mcgResolveInstructor(ctx, instructors, instructorValue || "__default__");
     const termVal = mcgResolveTerm(payload, instVal, termKey);
-    const termsForInst = mcgUniqueTerms(mcgFilterHistory(payload, instVal, null));
+    const allTerms = mcgAllTerms(payload);
     const filtered = mcgFilterHistory(payload, instVal, termVal);
     const buckets = mcgAggregateBucketCounts(filtered);
-    const letterTotal = mcgBucketTotal(buckets);
-    const yMax = mcgNiceYMax(Math.max(...MCG_CHART_BUCKETS.map((b) => buckets[b.label] || 0)));
+    const donutTotal = mcgBucketTotal(buckets);
+    const letterModel = mcgAggregateLetterCounts(filtered);
+    const barLetterTotal = letterModel.rows.reduce((s, r) => s + (Number(r.count) || 0), 0);
+    const yMax = mcgNiceYMax(letterModel.max);
     const avgGpa = mcgWeightedGpaFromRows(filtered);
     const pnpCount = (Number(buckets.P) || 0) + (Number(buckets.NP) || 0);
+    const instDisplay = mcgInstructorDisplayLabel(instVal, instructors);
+    const termDisplay = mcgTermLabel(allTerms, termVal);
 
     const instOptions = [
       `<option value="__all__"${instVal === "__all__" ? " selected" : ""}>All Instructors</option>`,
@@ -976,21 +1054,23 @@
         return `<option value="${escapeHtml(n)}"${sel}>${escapeHtml(n)}</option>`;
       }),
     ].join("");
-    const termOptions = termsForInst
-      .map((t) => {
+    const termOptions = [
+      `<option value="__all__"${termVal === "__all__" ? " selected" : ""}>All Terms</option>`,
+      ...allTerms.map((t) => {
         const sel = termVal === t.key ? " selected" : "";
         return `<option value="${escapeHtml(t.key)}"${sel}>${escapeHtml(t.label)}</option>`;
-      })
-      .join("");
+      }),
+    ].join("");
+    const instSelect = renderMcgSelectShell(instDisplay, instOptions, ' data-ucrd-mcg-instructor');
+    const termSelect = renderMcgSelectShell(termDisplay, termOptions, ' data-ucrd-mcg-term');
+    const filtersHtml = `<div class="ucrd-mcg-filters">
+        <label class="ucrd-mcg-select-wrap"><span class="ucrd-sr-only">Instructor</span>${instSelect}</label>
+        <label class="ucrd-mcg-select-wrap"><span class="ucrd-sr-only">Term</span>${termSelect}</label>
+      </div>`;
 
     if (!filtered.length) {
       return `<section class="ucrd-mcg-dashboard" data-ucrd-mcg-dashboard>
-        <div class="ucrd-mcg-filters">
-          <label class="ucrd-mcg-select-wrap"><span class="ucrd-sr-only">Instructor</span>
-            <select class="ucrd-mcg-select" data-ucrd-mcg-instructor>${instOptions}</select></label>
-          <label class="ucrd-mcg-select-wrap"><span class="ucrd-sr-only">Term</span>
-            <select class="ucrd-mcg-select" data-ucrd-mcg-term>${termOptions || '<option value="">No terms</option>'}</select></label>
-        </div>
+        ${filtersHtml}
         <p class="ucrd-gpa-muted">No sections match these filters.</p>
       </section>`;
     }
@@ -998,22 +1078,17 @@
     return `<section class="ucrd-mcg-dashboard" data-ucrd-mcg-dashboard data-ucrd-mcg-instructor="${escapeHtml(
       instVal
     )}" data-ucrd-mcg-term="${escapeHtml(termVal)}">
-      <div class="ucrd-mcg-filters">
-        <label class="ucrd-mcg-select-wrap"><span class="ucrd-sr-only">Instructor</span>
-          <select class="ucrd-mcg-select" data-ucrd-mcg-instructor>${instOptions}</select></label>
-        <label class="ucrd-mcg-select-wrap"><span class="ucrd-sr-only">Term</span>
-          <select class="ucrd-mcg-select" data-ucrd-mcg-term>${termOptions}</select></label>
-      </div>
+      ${filtersHtml}
       <div class="ucrd-mcg-layout">
-        <div class="ucrd-mcg-left">${renderMcgBarChart(buckets, yMax, letterTotal)}</div>
-        <div class="ucrd-mcg-right">${renderMcgDonut(buckets, letterTotal, avgGpa, pnpCount)}</div>
+        <div class="ucrd-mcg-donut-col">${renderMcgDonut(buckets, donutTotal, avgGpa, pnpCount)}</div>
+        <div class="ucrd-mcg-bar-col">${renderMcgBarChart(letterModel, yMax, barLetterTotal)}</div>
       </div>
     </section>`;
   }
 
   function applyMcgDashboardUpdate(instructorValue, termKey) {
     ucrdMcgInstructor = instructorValue || "__all__";
-    ucrdMcgTermKey = termKey || "";
+    ucrdMcgTermKey = termKey || "__all__";
     const panel = ucrdModalEl?.querySelector(`[data-ucrd-panel="${UCRD_TAB.GPA}"]`);
     const mount = panel?.querySelector("[data-ucrd-mcg-mount]");
     if (!mount || !ucrdGpaPanelPayload || !ucrdModalLoadCtx) return;
@@ -1029,12 +1104,12 @@
     if (!(target instanceof HTMLSelectElement)) return;
     const panel = target.closest(`[data-ucrd-panel="${UCRD_TAB.GPA}"]`);
     if (!panel || !ucrdGpaPanelPayload) return;
-    const instSel = panel.querySelector("[data-ucrd-mcg-instructor]");
-    const termSel = panel.querySelector("[data-ucrd-mcg-term]");
+    const instSel = panel.querySelector("select[data-ucrd-mcg-instructor]");
+    const termSel = panel.querySelector("select[data-ucrd-mcg-term]");
     const inst = instSel?.value || "__all__";
-    let term = termSel?.value || "";
+    let term = termSel?.value || "__all__";
     if (target === instSel) {
-      term = mcgResolveTerm(ucrdGpaPanelPayload, inst, "");
+      term = mcgResolveTerm(ucrdGpaPanelPayload, inst, "__default__");
     }
     applyMcgDashboardUpdate(inst, term);
   }
@@ -1060,125 +1135,13 @@
     }
   }
 
-  function stripCached(obj) {
-    if (!obj || typeof obj !== "object") return obj;
-    const { cached: _c, ...rest } = obj;
-    return rest;
-  }
-
-  function loadGeminiSources(ctx) {
-    const profs = Array.isArray(ctx?.professorNames) ? ctx.professorNames : [];
-    const sheetProf =
-      String(ctx?.sheetProfessorQuery ?? "").trim() ||
-      (ctx?.primaryInstructorLabel && ctx.primaryInstructorLabel !== "—" ? ctx.primaryInstructorLabel : "") ||
-      (profs.length ? profs[0] : "");
-    const rmpTarget =
-      ctx?.primaryInstructorLabel && ctx.primaryInstructorLabel !== "—"
-        ? ctx.primaryInstructorLabel
-        : profs[0] || "";
-
-    return Promise.all([
-      new Promise((resolve) => {
-        try {
-          chrome.runtime.sendMessage(
-            {
-              type: "FETCH_MYCLASSGRADES",
-              courseCode: ctx.courseCode,
-              professorNames: profs,
-              primaryInstructor: ctx.primaryInstructorLabel || "",
-            },
-            (r) => {
-              if (chrome.runtime.lastError) {
-                resolve(null);
-                return;
-              }
-              resolve(r && r.ok ? stripCached(r) : null);
-            }
-          );
-        } catch {
-          resolve(null);
-        }
-      }),
-      new Promise((resolve) => {
-        try {
-          chrome.runtime.sendMessage(
-            { type: "FETCH_SHEET_GRADES", courseCode: ctx.courseCode, professorName: sheetProf },
-            (r) => {
-              if (chrome.runtime.lastError) {
-                resolve(null);
-                return;
-              }
-              resolve(r && r.ok ? r.data : null);
-            }
-          );
-        } catch {
-          resolve(null);
-        }
-      }),
-      new Promise((resolve) => {
-        if (!rmpTarget) {
-          resolve(null);
-          return;
-        }
-        try {
-          chrome.runtime.sendMessage({ type: "FETCH_RMP", profName: rmpTarget }, (r) => {
-            if (chrome.runtime.lastError) {
-              resolve(null);
-              return;
-            }
-            resolve(r && r.ok ? r.data : null);
-          });
-        } catch {
-          resolve(null);
-        }
-      }),
-    ]).then(([mcgPayload, sheetData, rmpData]) => {
-      const profKey = (profs[0] || "").replace(/\s+/g, "");
-      return {
-        profKey,
-        sources: {
-          rmp: rmpData,
-          courseData: mcgPayload ?? { ok: false },
-          difficultyDatabase: sheetData,
-        },
-      };
-    });
-  }
-
-  function syncAiGeminiSettingsBar(panelEl) {
-    if (!panelEl || typeof panelEl.querySelector !== "function") return;
-    const toggle = panelEl.querySelector("[data-ucrd-ai-mode-toggle]");
-    const input = panelEl.querySelector("[data-ucrd-gemini-api-key]");
-    if (!toggle || !input) return;
-    try {
-      chrome.storage.local.get(["geminiApiKey", "geminiAiEnabled"], (r) => {
-        if (chrome.runtime.lastError || !panelEl.isConnected) return;
-        const t = panelEl.querySelector("[data-ucrd-ai-mode-toggle]");
-        const inp = panelEl.querySelector("[data-ucrd-gemini-api-key]");
-        if (!t || !inp) return;
-        const on = r.geminiAiEnabled !== false;
-        t.classList.toggle("ucrd-ai-toggle-on", on);
-        t.setAttribute("aria-checked", on ? "true" : "false");
-        inp.value = "";
-        inp.placeholder = String(r.geminiApiKey ?? "").trim() ? "AIza..." : "Paste Gemini API key";
-      });
-    } catch {
-      /* ignore */
-    }
-  }
-
   function replaceDataPanel(tab, html) {
     const prev = ucrdModalEl?.querySelector(`[data-ucrd-panel="${tab}"]`);
     if (!prev || !ucrdModalEl || ucrdModalEl.hasAttribute("hidden")) return;
     const wrap = document.createElement("div");
     wrap.innerHTML = html.trim();
     const nu = wrap.firstElementChild;
-    if (nu) {
-      const wasHidden = prev.hidden;
-      prev.replaceWith(nu);
-      if (wasHidden) nu.hidden = true;
-      if (tab === UCRD_TAB.AI) syncAiGeminiSettingsBar(nu);
-    }
+    if (nu) prev.replaceWith(nu);
   }
 
   function replaceGpaPanel(html) {
@@ -1215,22 +1178,16 @@
         : "";
       return `<div class="ucrd-panel ucrd-panel-rmp" data-ucrd-panel="${UCRD_TAB.RMP}">
         <h2 class="ucrd-gpa-headline">RateMyProfessor</h2>
-        <p class="ucrd-gpa-muted">Instructor: <strong>${escapeHtml(prof || "—")}</strong></p>
         ${hint}
         <p class="ucrd-gpa-muted"><a class="ucrd-ext-link" href="${escapeHtml(searchUrl)}" target="_blank" rel="noreferrer">Open UCR RMP search</a></p>
       </div>`;
     }
 
-    const displayName =
-      [data.firstName, data.lastName].filter(Boolean).join(" ").trim() || prof || "—";
     const profileUrl = data.profileUrl || searchUrl;
     const rating = formatRatingMaybe(data.avgRating);
     const wta = formatPercentMaybe(data.wouldTakeAgainPercent);
     const difficulty = formatRatingMaybe(data.avgDifficulty);
     const num = data.numRatings == null ? null : Number(data.numRatings);
-    const dept = data.department ? String(data.department) : "";
-    const school = data.schoolName ? String(data.schoolName) : "University of California Riverside";
-    const subline = [dept, school].filter(Boolean).join(" · ");
 
     const statPills = [
       wta
@@ -1253,9 +1210,6 @@
       const bm = rmpCourseMatchesReview(courseCode, b.class) ? 1 : 0;
       return bm - am;
     });
-    const courseMatches = reviews.filter((r) => rmpCourseMatchesReview(courseCode, r.class));
-    const reviewSectionTitle =
-      courseMatches.length && courseCode ? `Recent reviews for ${courseCode}` : "Recent reviews";
     const reviewCards = reviews.length
       ? reviews
           .slice(0, 6)
@@ -1276,20 +1230,13 @@
         <div class="ucrd-rmp-hero-score">
           <span class="ucrd-rmp-hero-num">${escapeHtml(rating || "—")}</span>
           <span class="ucrd-rmp-hero-of">/5</span>
-          <span class="ucrd-rmp-hero-label">Overall quality</span>
         </div>
-        <div class="ucrd-rmp-hero-meta">
-          <h2 class="ucrd-rmp-prof-name">${escapeHtml(displayName)}</h2>
-          ${subline ? `<p class="ucrd-gpa-muted ucrd-rmp-subline">${escapeHtml(subline)}</p>` : ""}
-          <p class="ucrd-gpa-muted ucrd-rmp-row-instructor">Row instructor: <strong>${escapeHtml(prof || "—")}</strong></p>
-        </div>
+        ${statPills ? `<div class="ucrd-rmp-stats">${statPills}</div>` : ""}
       </div>
-      ${statPills ? `<div class="ucrd-rmp-stats">${statPills}</div>` : ""}
       ${fallbackNote}
       <div class="ucrd-rmp-body-grid">
         ${distHtml}
         <section class="ucrd-rmp-reviews">
-          <h3 class="ucrd-gpa-subhead">${escapeHtml(reviewSectionTitle)}</h3>
           <div class="ucrd-rmp-review-scroll">${reviewCards}</div>
         </section>
       </div>
@@ -1297,13 +1244,136 @@
     </div>`;
   }
 
-  function renderSheetPanelHtml(ctx, st) {
+  function sheetProfessorList(ctx) {
+    const raw = Array.isArray(ctx?.professorNames) ? ctx.professorNames : [];
+    const out = [];
+    for (const p of raw) {
+      const n = String(p || "").trim();
+      if (!n) continue;
+      if (out.some((x) => namesLikelyMatch(n, [x]))) continue;
+      out.push(n);
+    }
+    const primary = primaryProfessorLabel(ctx);
+    if (primary && !out.some((x) => namesLikelyMatch(x, [primary]))) {
+      out.unshift(primary);
+    }
+    return out;
+  }
+
+  function sheetResolveProfessor(ctx, requested) {
+    if (requested && requested !== "__default__") return requested;
+    const primary = primaryProfessorLabel(ctx);
+    if (primary) return primary;
+    const list = sheetProfessorList(ctx);
+    return list[0] || "__all__";
+  }
+
+  function sheetProfessorApiName(val) {
+    if (!val || val === "__all__") return "";
+    return val;
+  }
+
+  function sheetProfessorOptionSelected(optionVal, selectedVal) {
+    if (optionVal === "__all__") return selectedVal === "__all__";
+    return namesLikelyMatch(optionVal, [selectedVal]);
+  }
+
+  function sheetProfessorDisplayLabel(val, ctx) {
+    if (!val || val === "__all__") return "All Instructors";
+    const primary = primaryProfessorLabel(ctx);
+    if (primary && namesLikelyMatch(val, [primary])) return `${val} (Primary)`;
+    return val;
+  }
+
+  function formatSheetDifficultyDisplay(val) {
+    const s = String(val ?? "").trim();
+    if (!s || s === "—") return "—";
+    if (/\/\s*10\s*$/i.test(s)) return s;
+    return `${s}/10`;
+  }
+
+  function renderSheetProfessorFilterHtml(ctx, professorVal) {
+    const sel = sheetResolveProfessor(ctx, professorVal || "__default__");
+    const profs = sheetProfessorList(ctx);
+    const options = [
+      `<option value="__all__"${sel === "__all__" ? " selected" : ""}>All Instructors</option>`,
+      ...profs.map((n) => {
+        const label = sheetProfessorDisplayLabel(n, ctx);
+        const selected = sheetProfessorOptionSelected(n, sel) ? " selected" : "";
+        return `<option value="${escapeHtml(n)}"${selected}>${escapeHtml(label)}</option>`;
+      }),
+    ].join("");
+    const display = sheetProfessorDisplayLabel(sel, ctx);
+    const select = renderMcgSelectShell(display, options, ' data-ucrd-sheet-professor');
+    return `<div class="ucrd-mcg-filters ucrd-sheet-filters">
+        <label class="ucrd-mcg-select-wrap"><span class="ucrd-sr-only">Professor</span>${select}</label>
+      </div>`;
+  }
+
+  function loadSheetPanel(ctx, professorVal) {
+    if (!ucrdModalEl || ucrdModalEl.hasAttribute("hidden")) return;
+    const resolved = sheetResolveProfessor(ctx, professorVal || ucrdSheetProfessor || "__default__");
+    ucrdSheetProfessor = resolved;
+    const apiName = sheetProfessorApiName(resolved);
+    replaceDataPanel(
+      UCRD_TAB.DIFF,
+      renderSheetPanelHtml(ctx, { status: "loading" }, resolved)
+    );
+    try {
+      chrome.runtime.sendMessage(
+        { type: "FETCH_SHEET_GRADES", courseCode: ctx.courseCode, professorName: apiName },
+        (resp) => {
+          if (!ucrdModalEl || ucrdModalEl.hasAttribute("hidden")) return;
+          if (chrome.runtime.lastError) {
+            replaceDataPanel(
+              UCRD_TAB.DIFF,
+              renderSheetPanelHtml(
+                ctx,
+                { status: "error", message: chrome.runtime.lastError.message },
+                ucrdSheetProfessor
+              )
+            );
+            return;
+          }
+          if (!resp || !resp.ok) {
+            replaceDataPanel(
+              UCRD_TAB.DIFF,
+              renderSheetPanelHtml(
+                ctx,
+                { status: "error", message: resp?.error || "Sheet request failed" },
+                ucrdSheetProfessor
+              )
+            );
+            return;
+          }
+          replaceDataPanel(
+            UCRD_TAB.DIFF,
+            renderSheetPanelHtml(ctx, { status: "ok", data: resp.data }, ucrdSheetProfessor)
+          );
+        }
+      );
+    } catch (e) {
+      replaceDataPanel(
+        UCRD_TAB.DIFF,
+        renderSheetPanelHtml(ctx, { status: "error", message: e?.message || String(e) }, ucrdSheetProfessor)
+      );
+    }
+  }
+
+  function handleSheetProfessorChange(target) {
+    if (!(target instanceof HTMLSelectElement) || !ucrdModalLoadCtx) return;
+    loadSheetPanel(ucrdModalLoadCtx, target.value || "__all__");
+  }
+
+  function renderSheetPanelHtml(ctx, st, professorVal) {
     const sheetLink = UCRD_GRADES_SHEET;
+    const filters = renderSheetProfessorFilterHtml(ctx, professorVal);
+    const profAttr = escapeHtml(sheetResolveProfessor(ctx, professorVal || "__default__"));
     if (st.status === "loading") {
-      return `<div class="ucrd-panel ucrd-panel-sheet" data-ucrd-panel="${UCRD_TAB.DIFF}"><p class="ucrd-gpa-muted ucrd-gpa-loading">Loading difficulty database…</p></div>`;
+      return `<div class="ucrd-panel ucrd-panel-sheet" data-ucrd-panel="${UCRD_TAB.DIFF}" data-ucrd-sheet-professor="${profAttr}">${filters}<p class="ucrd-gpa-muted ucrd-gpa-loading">Loading difficulty database…</p></div>`;
     }
     if (st.status === "error") {
-      return `<div class="ucrd-panel ucrd-panel-sheet" data-ucrd-panel="${UCRD_TAB.DIFF}"><h2 class="ucrd-gpa-headline">Difficulty Database</h2><p class="ucrd-gpa-error">${escapeHtml(
+      return `<div class="ucrd-panel ucrd-panel-sheet" data-ucrd-panel="${UCRD_TAB.DIFF}" data-ucrd-sheet-professor="${profAttr}">${filters}<h2 class="ucrd-gpa-headline">Difficulty Database</h2><p class="ucrd-gpa-error">${escapeHtml(
         st.message || "Could not load sheet."
       )}</p><p class="ucrd-gpa-muted"><a class="ucrd-ext-link" href="${escapeHtml(
         sheetLink
@@ -1311,27 +1381,24 @@
     }
     const data = st.data || {};
     if (!data.found) {
-      return `<div class="ucrd-panel ucrd-panel-sheet" data-ucrd-panel="${UCRD_TAB.DIFF}"><h2 class="ucrd-gpa-headline">Difficulty Database</h2><p class="ucrd-gpa-muted">No rows for <strong>${escapeHtml(
-        ctx?.courseCode || "—"
-      )}</strong> in the sheet.</p><p class="ucrd-gpa-muted"><a class="ucrd-ext-link" href="${escapeHtml(
+      return `<div class="ucrd-panel ucrd-panel-sheet" data-ucrd-panel="${UCRD_TAB.DIFF}" data-ucrd-sheet-professor="${profAttr}">${filters}<h2 class="ucrd-gpa-headline">Difficulty Database</h2><p class="ucrd-gpa-muted">No rows for this course in the sheet.</p><p class="ucrd-gpa-muted"><a class="ucrd-ext-link" href="${escapeHtml(
         sheetLink
       )}" target="_blank" rel="noreferrer">Open Google Sheet</a></p></div>`;
     }
 
     const comments = Array.isArray(data.comments) ? data.comments : [];
     let disc = "";
-    if (data.showGeneralDisclaimer && data.classDisplay) {
-      disc = `<p class="ucrd-sheet-disclaimer">Showing general comments for ${escapeHtml(
-        String(data.classDisplay)
-      )}.</p>`;
+    if (data.showGeneralDisclaimer) {
+      const instructor = sheetResolveProfessor(ctx, professorVal || "__default__");
+      disc = `<p class="ucrd-sheet-disclaimer">No comments for ${escapeHtml(instructor)} found. Showing general comments.</p>`;
     }
     const cards = comments.length
       ? comments.map((t) => `<div class="ucrd-sheet-card">${escapeHtml(String(t))}</div>`).join("")
       : `<p class="ucrd-gpa-muted">No written comments for this class.</p>`;
 
-    return `<div class="ucrd-panel ucrd-panel-sheet" data-ucrd-panel="${UCRD_TAB.DIFF}">
-      <h2 class="ucrd-gpa-headline">Average difficulty: ${escapeHtml(String(data.difficulty ?? "—"))}</h2>
-      <p class="ucrd-gpa-muted">Course: <strong>${escapeHtml(ctx?.courseCode || "—")}</strong></p>
+    return `<div class="ucrd-panel ucrd-panel-sheet" data-ucrd-panel="${UCRD_TAB.DIFF}" data-ucrd-sheet-professor="${profAttr}">
+      ${filters}
+      <h2 class="ucrd-gpa-headline">Average difficulty: ${escapeHtml(formatSheetDifficultyDisplay(data.difficulty))}</h2>
       ${disc}
       <div class="ucrd-sheet-scroll">${cards}</div>
       <p class="ucrd-gpa-muted ucrd-sheet-foot"><a class="ucrd-ext-link" href="${escapeHtml(
@@ -1340,134 +1407,12 @@
     </div>`;
   }
 
-  function renderAiSettingsBarHtml() {
-    return `<div class="ucrd-ai-settings" data-ucrd-ai-settings>
-      <div class="ucrd-ai-settings-left">
-        <span class="ucrd-ai-settings-label">AI Mode:</span>
-        <button type="button" class="ucrd-ai-mode-toggle ucrd-ai-toggle-on" data-ucrd-ai-mode-toggle role="switch" aria-checked="true" aria-label="AI mode">
-          <span class="ucrd-ai-toggle-oncap" aria-hidden="true">ON</span>
-          <span class="ucrd-ai-toggle-offcap" aria-hidden="true">OFF</span>
-          <span class="ucrd-ai-toggle-knob" aria-hidden="true"></span>
-        </button>
-      </div>
-      <div class="ucrd-ai-settings-right">
-        <label class="ucrd-ai-settings-label ucrd-ai-key-label" for="ucrd-gemini-api-key-field">Enter Gemini API Key:</label>
-        <input type="password" id="ucrd-gemini-api-key-field" class="ucrd-ai-api-input" data-ucrd-gemini-api-key autocomplete="off" spellcheck="false" placeholder="Paste Gemini API key" />
-      </div>
-    </div>`;
-  }
-
-  function renderAiPanelHtml(ctx, st) {
-    const bar = renderAiSettingsBarHtml();
-    if (st.status === "loading") {
-      return `<div class="ucrd-panel ucrd-panel-ai" data-ucrd-panel="${UCRD_TAB.AI}">${bar}<p class="ucrd-gpa-muted ucrd-gpa-loading">Loading AI summary…</p></div>`;
-    }
-    if (st.status === "disabled") {
-      return `<div class="ucrd-panel ucrd-panel-ai" data-ucrd-panel="${UCRD_TAB.AI}">${bar}<h2 class="ucrd-gpa-headline">AI analysis</h2><p class="ucrd-gpa-muted">${escapeHtml(
-        st.message || "AI Mode is off."
-      )}</p></div>`;
-    }
-    if (st.status === "unavailable") {
-      return `<div class="ucrd-panel ucrd-panel-ai" data-ucrd-panel="${UCRD_TAB.AI}">${bar}<h2 class="ucrd-gpa-headline">AI analysis</h2><p class="ucrd-gpa-muted">${escapeHtml(
-        st.message || "Set geminiApiKey in extension storage to enable."
-      )}</p></div>`;
-    }
-    if (st.status === "error") {
-      return `<div class="ucrd-panel ucrd-panel-ai" data-ucrd-panel="${UCRD_TAB.AI}">${bar}<h2 class="ucrd-gpa-headline">AI analysis</h2><p class="ucrd-gpa-error">${escapeHtml(
-        st.message || "Could not load summary."
-      )}</p></div>`;
-    }
-
-    const d = st.data || {};
-    const diff = d.overallDifficulty;
-    let pill = "—";
-    let pillStyle = "";
-    if (diff != null && Number.isFinite(Number(diff))) {
-      const clamped = Math.max(1, Math.min(10, Math.round(Number(diff))));
-      pill = `${clamped} / 10`;
-      const hue = 120 - (clamped - 1) * (120 / 9);
-      pillStyle = ` style="background:hsl(${hue},85%,44%);border:1px solid hsl(${hue},90%,30%);color:#0b1220;font-weight:800;padding:0.15rem 0.45rem;border-radius:999px;display:inline-block;"`;
-    }
-    const sent = String(d.sentiment ?? "").trim() || "—";
-    const tips = Array.isArray(d.tips) ? d.tips : [];
-    const mis = Array.isArray(d.mistakes) ? d.mistakes : [];
-    const tipLis = tips
-      .slice(0, 3)
-      .map((t) => `<li>${escapeHtml(String(t))}</li>`)
-      .join("");
-    const misLis = mis
-      .slice(0, 3)
-      .map((t) => `<li>${escapeHtml(String(t))}</li>`)
-      .join("");
-
-    return `<div class="ucrd-panel ucrd-panel-ai" data-ucrd-panel="${UCRD_TAB.AI}">
-      ${bar}
-      <div class="ucrd-ai-top"><span class="ucrd-ai-title">Overall difficulty</span><span class="ucrd-ai-pill"${pillStyle}>${escapeHtml(
-        pill
-      )}</span></div>
-      <h3 class="ucrd-gpa-subhead" id="ucrd-ai-sent">Sentiment</h3>
-      <p class="ucrd-ai-body">${escapeHtml(sent)}</p>
-      <h3 class="ucrd-gpa-subhead">Tips</h3>
-      <ul class="ucrd-ai-list">${tipLis || `<li class="ucrd-gpa-muted">—</li>`}</ul>
-      <h3 class="ucrd-gpa-subhead">Common mistakes</h3>
-      <ul class="ucrd-ai-list">${misLis || `<li class="ucrd-gpa-muted">—</li>`}</ul>
-    </div>`;
-  }
-
-  function kickoffAiPanelLoads(ctx) {
-    if (!ucrdModalEl || ucrdModalEl.hasAttribute("hidden")) return;
-    replaceDataPanel(UCRD_TAB.AI, renderAiPanelHtml(ctx, { status: "loading" }));
-    loadGeminiSources(ctx).then(({ profKey, sources }) => {
-      if (!ucrdModalEl || ucrdModalEl.hasAttribute("hidden")) return;
-      try {
-        chrome.runtime.sendMessage(
-          {
-            type: "FETCH_GEMINI_SUMMARY",
-            courseCode: ctx.courseCode,
-            professorKey: profKey,
-            sources,
-          },
-          (aiResp) => {
-            if (!ucrdModalEl || ucrdModalEl.hasAttribute("hidden")) return;
-            if (chrome.runtime.lastError) {
-              replaceDataPanel(
-                UCRD_TAB.AI,
-                renderAiPanelHtml(ctx, {
-                  status: "error",
-                  message: chrome.runtime.lastError.message,
-                })
-              );
-              return;
-            }
-            if (!aiResp || !aiResp.ok) {
-              const msg = aiResp?.error || "AI summary unavailable.";
-              const short = String(msg).toLowerCase();
-              if (short.includes("api key") || short.includes("geminiapikey")) {
-                replaceDataPanel(UCRD_TAB.AI, renderAiPanelHtml(ctx, { status: "unavailable", message: msg }));
-              } else {
-                replaceDataPanel(UCRD_TAB.AI, renderAiPanelHtml(ctx, { status: "error", message: msg }));
-              }
-              return;
-            }
-            replaceDataPanel(UCRD_TAB.AI, renderAiPanelHtml(ctx, { status: "ok", data: aiResp.data }));
-          }
-        );
-      } catch (e) {
-        replaceDataPanel(UCRD_TAB.AI, renderAiPanelHtml(ctx, { status: "error", message: e?.message || String(e) }));
-      }
-    });
-  }
-
   function kickoffSidePanelLoads(ctx) {
     if (!ucrdModalEl || ucrdModalEl.hasAttribute("hidden")) return;
 
     const profList = Array.isArray(ctx?.professorNames)
       ? ctx.professorNames.filter((p) => String(p || "").trim())
       : [];
-    const sheetProf =
-      String(ctx?.sheetProfessorQuery ?? "").trim() ||
-      (ctx?.primaryInstructorLabel && ctx.primaryInstructorLabel !== "—" ? ctx.primaryInstructorLabel : "") ||
-      (profList.length ? profList[0] : "");
 
     const rmpProf =
       ctx?.primaryInstructorLabel && ctx.primaryInstructorLabel !== "—"
@@ -1501,57 +1446,7 @@
       }
     }
 
-    try {
-      chrome.runtime.sendMessage(
-        { type: "FETCH_SHEET_GRADES", courseCode: ctx.courseCode, professorName: sheetProf },
-        (resp) => {
-          if (!ucrdModalEl || ucrdModalEl.hasAttribute("hidden")) return;
-          if (chrome.runtime.lastError) {
-            replaceDataPanel(
-              UCRD_TAB.DIFF,
-              renderSheetPanelHtml(ctx, { status: "error", message: chrome.runtime.lastError.message })
-            );
-            return;
-          }
-          if (!resp || !resp.ok) {
-            replaceDataPanel(
-              UCRD_TAB.DIFF,
-              renderSheetPanelHtml(ctx, { status: "error", message: resp?.error || "Sheet request failed" })
-            );
-            return;
-          }
-          replaceDataPanel(UCRD_TAB.DIFF, renderSheetPanelHtml(ctx, { status: "ok", data: resp.data }));
-        }
-      );
-    } catch (e) {
-      replaceDataPanel(
-        UCRD_TAB.DIFF,
-        renderSheetPanelHtml(ctx, { status: "error", message: e?.message || String(e) })
-      );
-    }
-
-    try {
-      chrome.storage.local.get(["geminiAiEnabled"], (r) => {
-        if (!ucrdModalEl || ucrdModalEl.hasAttribute("hidden")) return;
-        if (chrome.runtime.lastError) {
-          kickoffAiPanelLoads(ctx);
-          return;
-        }
-        if (r.geminiAiEnabled === false) {
-          replaceDataPanel(
-            UCRD_TAB.AI,
-            renderAiPanelHtml(ctx, {
-              status: "disabled",
-              message: "AI Mode is off. Turn AI Mode on above to generate summaries.",
-            })
-          );
-          return;
-        }
-        kickoffAiPanelLoads(ctx);
-      });
-    } catch {
-      kickoffAiPanelLoads(ctx);
-    }
+    loadSheetPanel(ctx, "__default__");
   }
 
   function buildDeliveryScoresHTML() {
@@ -1563,9 +1458,7 @@
   }
 
   function syncDeliveryScoreLines(stackEl) {
-    stackEl.querySelectorAll(`a[data-ucrd-tab="${UCRD_TAB.DIFF}"], a[data-ucrd-tab="${UCRD_TAB.AI}"]`).forEach((el) =>
-      el.remove()
-    );
+    stackEl.querySelectorAll(`a[data-ucrd-tab="${UCRD_TAB.DIFF}"]`).forEach((el) => el.remove());
     const scores = stackEl.querySelector(".ucrd-delivery-scores");
     if (!scores) {
       stackEl.innerHTML = buildDeliveryScoresHTML();
@@ -1611,6 +1504,7 @@
       (t) => t.includes("course") && (t.includes("number") || t.includes("n") || t.includes("num"))
     );
     const titleIdx = findColIndex(headerTexts, (t) => t.includes("title"));
+    const sectionIdx = findColIndex(headerTexts, (t) => t === "section" || /^sect/.test(t));
     const instIdx = findColIndex(headerTexts, (t) => t.includes("instructor") || t.includes("instruct"));
 
     const cellText = (idx) => {
@@ -1631,6 +1525,7 @@
 
     const subject = cellText(subjIdx);
     const courseNum = cellText(courseNumIdx);
+    const section = cellText(sectionIdx);
     const title = cellText(titleIdx);
     const instructorRaw = instructorCellText(instIdx);
     const { primaryInstructorLabel, professorNames, sheetProfessorQuery } =
@@ -1639,6 +1534,7 @@
     const courseCode = [subject, courseNum].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
     return {
       courseCode: courseCode || "—",
+      section: section || "",
       title: title || "—",
       instructorRaw,
       primaryInstructorLabel,
@@ -1713,6 +1609,7 @@
       return `
       <div class="ucrd-panel ucrd-panel-gpa" data-ucrd-panel="${UCRD_TAB.GPA}">
         <p class="ucrd-gpa-muted ucrd-gpa-loading">Loading grade data…</p>
+        ${renderMyClassGradesFootLink()}
       </div>`;
     }
 
@@ -1721,18 +1618,11 @@
       <div class="ucrd-panel ucrd-panel-gpa" data-ucrd-panel="${UCRD_TAB.GPA}">
         <h2 class="ucrd-gpa-headline">Average GPA</h2>
         <p class="ucrd-gpa-error">${escapeHtml(st.message || "Could not load grades.")}</p>
-        <p class="ucrd-gpa-muted">Course: ${escapeHtml(ctx?.courseCode || "—")}</p>
+        ${renderMyClassGradesFootLink()}
       </div>`;
     }
 
     const payload = st.payload;
-    const course = payload.course || {};
-    const titleApi = course.title || ctx?.title || "—";
-    const subtitle =
-      titleApi !== "—"
-        ? String(titleApi).toUpperCase()
-        : String(ctx?.title && ctx.title !== "—" ? ctx.title : titleApi).toUpperCase();
-
     const dashHtml = renderMcgDashboardSection(
       payload,
       ctx,
@@ -1742,36 +1632,166 @@
 
     return `
       <div class="ucrd-panel ucrd-panel-gpa" data-ucrd-panel="${UCRD_TAB.GPA}">
-        <h2 class="ucrd-gpa-headline">${escapeHtml(ctx?.courseCode || "Course")}</h2>
-        <p class="ucrd-gpa-muted ucrd-gpa-course">${escapeHtml(subtitle)}</p>
         <div data-ucrd-mcg-mount>${dashHtml}</div>
+        ${renderMyClassGradesFootLink()}
       </div>
     `;
   }
 
+  function wrapModalSection(tab, panelHtml, ariaLabel) {
+    return `<section class="ucrd-modal-section ucrd-modal-section-${tab}" id="ucrd-sec-${tab}" data-ucrd-section="${tab}" aria-label="${escapeHtml(ariaLabel)}">${panelHtml}</section>`;
+  }
+
   function buildModalPanelsHTML(ctx, gpaState) {
     return [
-      renderGpaPanel(ctx, gpaState),
-      renderRmpPanelHtml(ctx, { status: "loading" }),
-      renderSheetPanelHtml(ctx, { status: "loading" }),
-      renderAiPanelHtml(ctx, { status: "loading" }),
+      wrapModalSection(UCRD_TAB.GPA, renderGpaPanel(ctx, gpaState), "Grades"),
+      wrapModalSection(UCRD_TAB.RMP, renderRmpPanelHtml(ctx, { status: "loading" }), "RMP"),
+      wrapModalSection(UCRD_TAB.DIFF, renderSheetPanelHtml(ctx, { status: "loading" }), "Reviews"),
     ].join("");
   }
 
-  function setActiveTab(tab) {
+  function buildModalJumpersHtml(activeTab) {
+    return UCRD_JUMPER_META.map((j) => {
+      const on = j.tab === activeTab;
+      const icon = on ? j.iconGold : j.iconIdle;
+      return `<button type="button" class="ucrd-jumper-btn${on ? " ucrd-jumper-active" : ""}" data-ucrd-jumper="${j.tab}" aria-current="${on ? "true" : "false"}">
+        <img class="ucrd-jumper-icon" src="${escapeHtml(ucrdExtUrl(icon))}" width="28" height="24" alt="" />
+        <span class="ucrd-jumper-label">${escapeHtml(j.label)}</span>
+      </button>`;
+    }).join("");
+  }
+
+  function modalHeaderCourseLine(ctx) {
+    const code = ctx?.courseCode && ctx.courseCode !== "—" ? ctx.courseCode : "Course";
+    const sec = String(ctx?.section || "").trim();
+    return sec ? `${code} ${sec}` : code;
+  }
+
+  function modalHeaderInstructorLine(ctx) {
+    const primary = ctx?.primaryInstructorLabel;
+    if (primary && primary !== "—") return primary;
+    const names = ctx?.professorNames;
+    if (Array.isArray(names) && names[0]) return names[0];
+    return "Instructor";
+  }
+
+  function updateModalHeaderMeta(ctx) {
+    if (!ucrdModalEl || !ctx) return;
+    const courseEl = ucrdModalEl.querySelector("[data-ucrd-header-course]");
+    const instEl = ucrdModalEl.querySelector("[data-ucrd-header-instructor]");
+    if (courseEl) courseEl.textContent = modalHeaderCourseLine(ctx);
+    if (instEl) instEl.textContent = modalHeaderInstructorLine(ctx);
+  }
+
+  function teardownModalScrollSpy() {
+    ucrdScrollSpyObserver?.disconnect();
+    ucrdScrollSpyObserver = null;
+    ucrdJumperSpyUnlockCleanup?.();
+    ucrdJumperSpyUnlockCleanup = null;
+    ucrdJumperSpyPaused = false;
+  }
+
+  function lockJumperScrollSpyUntilScrollSettles() {
+    ucrdJumperSpyPaused = true;
+    ucrdJumperSpyUnlockCleanup?.();
+    const scrollHost = ucrdModalEl?.querySelector(".ucrd-modal-scroll");
+    if (!scrollHost) {
+      const t = setTimeout(() => {
+        ucrdJumperSpyUnlockCleanup = null;
+        ucrdJumperSpyPaused = false;
+      }, 400);
+      ucrdJumperSpyUnlockCleanup = () => {
+        clearTimeout(t);
+        ucrdJumperSpyUnlockCleanup = null;
+        ucrdJumperSpyPaused = false;
+      };
+      return;
+    }
+
+    let debounceTimer = null;
+    let maxTimer = null;
+
+    const unlock = () => {
+      scrollHost.removeEventListener("scroll", onScroll);
+      scrollHost.removeEventListener("scrollend", onScrollEnd);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      if (maxTimer) clearTimeout(maxTimer);
+      debounceTimer = maxTimer = null;
+      ucrdJumperSpyUnlockCleanup = null;
+      ucrdJumperSpyPaused = false;
+    };
+
+    ucrdJumperSpyUnlockCleanup = unlock;
+
+    const onScroll = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(unlock, 120);
+    };
+    const onScrollEnd = () => unlock();
+
+    scrollHost.addEventListener("scroll", onScroll, { passive: true });
+    if ("onscrollend" in window) {
+      scrollHost.addEventListener("scrollend", onScrollEnd, { once: true, passive: true });
+    }
+    maxTimer = setTimeout(unlock, 1000);
+    debounceTimer = setTimeout(unlock, 120);
+  }
+
+  function scrollToModalSection(tab) {
+    const sec = ucrdModalEl?.querySelector(`[data-ucrd-section="${tab}"]`);
+    const scrollHost = ucrdModalEl?.querySelector(".ucrd-modal-scroll");
+    if (!sec || !scrollHost) return;
+    lockJumperScrollSpyUntilScrollSettles();
+    const hostRect = scrollHost.getBoundingClientRect();
+    const secRect = sec.getBoundingClientRect();
+    const top = secRect.top - hostRect.top + scrollHost.scrollTop;
+    scrollHost.scrollTo({ top: Math.max(0, top - 8), behavior: "smooth" });
+  }
+
+  function setActiveJumper(tab, opts = {}) {
     if (!ucrdModalEl) return;
-    const allowed = new Set(Object.values(UCRD_TAB));
-    const t = allowed.has(tab) ? tab : UCRD_TAB.GPA;
+    const jumperTabs = new Set(UCRD_JUMPER_META.map((j) => j.tab));
+    const t = jumperTabs.has(tab) ? tab : UCRD_TAB.GPA;
     ucrdModalEl.dataset.ucrdActiveTab = t;
-    ucrdModalEl.querySelectorAll("[data-ucrd-tab-btn]").forEach((btn) => {
-      const on = btn.getAttribute("data-ucrd-tab-btn") === t;
-      btn.classList.toggle("ucrd-tab-active", on);
-      btn.setAttribute("aria-selected", on ? "true" : "false");
+    ucrdModalEl.querySelectorAll("[data-ucrd-jumper]").forEach((btn) => {
+      const key = btn.getAttribute("data-ucrd-jumper");
+      const meta = UCRD_JUMPER_META.find((j) => j.tab === key);
+      const on = key === t;
+      btn.classList.toggle("ucrd-jumper-active", on);
+      btn.setAttribute("aria-current", on ? "true" : "false");
+      const img = btn.querySelector(".ucrd-jumper-icon");
+      if (img && meta) img.src = ucrdExtUrl(on ? meta.iconGold : meta.iconIdle);
     });
-    ucrdModalEl.querySelectorAll("[data-ucrd-panel]").forEach((panel) => {
-      const on = panel.getAttribute("data-ucrd-panel") === t;
-      panel.hidden = !on;
-    });
+    if (opts.scroll !== false) scrollToModalSection(tab);
+  }
+
+  function setupModalScrollSpy() {
+    if (!ucrdModalEl) return;
+    const scrollHost = ucrdModalEl.querySelector(".ucrd-modal-scroll");
+    const sections = ucrdModalEl.querySelectorAll("[data-ucrd-section]");
+    if (!scrollHost || !sections.length) return;
+    teardownModalScrollSpy();
+    const ratios = new Map();
+    ucrdScrollSpyObserver = new IntersectionObserver(
+      (entries) => {
+        if (ucrdJumperSpyPaused) return;
+        for (const e of entries) ratios.set(e.target, e.intersectionRatio);
+        let bestTab = null;
+        let bestRatio = 0;
+        for (const el of sections) {
+          const r = ratios.get(el) ?? 0;
+          if (r > bestRatio) {
+            bestRatio = r;
+            bestTab = el.getAttribute("data-ucrd-section");
+          }
+        }
+        if (bestTab && UCRD_JUMPER_META.some((j) => j.tab === bestTab)) {
+          setActiveJumper(bestTab, { scroll: false });
+        }
+      },
+      { root: scrollHost, threshold: [0, 0.12, 0.3, 0.5, 0.75, 1], rootMargin: "-12% 0px -50% 0px" }
+    );
+    sections.forEach((s) => ucrdScrollSpyObserver.observe(s));
   }
 
   function closeUcrdModal() {
@@ -1780,7 +1800,9 @@
     ucrdGpaPanelPayload = null;
     ucrdMcgInstructor = "";
     ucrdMcgTermKey = "";
+    ucrdSheetProfessor = "";
     hideGradeChartTooltip();
+    teardownModalScrollSpy();
     ucrdModalEl.setAttribute("hidden", "");
     document.documentElement.classList.remove("ucrd-modal-open");
     if (document.body) document.body.classList.remove("ucrd-modal-open");
@@ -1796,6 +1818,7 @@
     ucrdGpaPanelPayload = null;
     ucrdMcgInstructor = "";
     ucrdMcgTermKey = "";
+    ucrdSheetProfessor = "";
     if (!ucrdModalEl) {
       ucrdModalEl = document.createElement("div");
       ucrdModalEl.className = "ucrd-modal-root";
@@ -1804,17 +1827,22 @@
         <div class="ucrd-modal-overlay" data-ucrd-close="overlay"></div>
         <div class="ucrd-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="ucrd-modal-title">
           <h2 class="ucrd-sr-only" id="ucrd-modal-title">Class data</h2>
-          <div class="ucrd-modal-header">
-            <div class="ucrd-modal-tabs" role="tablist" aria-label="Data sources">
-              <button type="button" class="ucrd-tab-pill" data-ucrd-tab-btn="${UCRD_TAB.GPA}" role="tab" id="ucrd-tab-gpa">Avg GPA</button>
-              <button type="button" class="ucrd-tab-pill" data-ucrd-tab-btn="${UCRD_TAB.RMP}" role="tab">RateMyProfessor</button>
-              <button type="button" class="ucrd-tab-pill" data-ucrd-tab-btn="${UCRD_TAB.DIFF}" role="tab">Diff. Database</button>
-              <button type="button" class="ucrd-tab-pill" data-ucrd-tab-btn="${UCRD_TAB.AI}" role="tab">AI Analysis</button>
+          <header class="ucrd-modal-topbar">
+            <div class="ucrd-modal-topbar-brand">
+              <img class="ucrd-modal-icon" src="${escapeHtml(ucrdExtUrl("icon48.png"))}" width="36" height="36" alt="" />
+              <div class="ucrd-modal-topbar-main">
+                <p class="ucrd-modal-course" data-ucrd-header-course>Course</p>
+                <p class="ucrd-modal-instructor" data-ucrd-header-instructor>Instructor</p>
+              </div>
             </div>
+            <nav class="ucrd-modal-jumpers" aria-label="Jump to section"></nav>
             <button type="button" class="ucrd-modal-x" data-ucrd-close="x" aria-label="Close">×</button>
-          </div>
+          </header>
           <div class="ucrd-modal-scroll">
             <div class="ucrd-modal-panels"></div>
+            <p class="ucrd-modal-feedback">
+              <a class="ucrd-ext-link" href="${escapeHtml(UCRD_FEEDBACK_FORM)}" target="_blank" rel="noreferrer">Let us know what you think!</a>
+            </p>
           </div>
         </div>
       `;
@@ -1822,7 +1850,9 @@
 
       ucrdModalEl.addEventListener("change", (e) => {
         const sel = e.target;
-        if (sel instanceof HTMLSelectElement && sel.matches("[data-ucrd-mcg-instructor], [data-ucrd-mcg-term]")) {
+        if (sel instanceof HTMLSelectElement && sel.matches("[data-ucrd-sheet-professor]")) {
+          handleSheetProfessorChange(sel);
+        } else if (sel instanceof HTMLSelectElement && sel.matches("[data-ucrd-mcg-instructor], [data-ucrd-mcg-term]")) {
           handleMcgSelectChange(sel);
         }
       });
@@ -1830,70 +1860,15 @@
       ucrdModalEl.addEventListener("click", (e) => {
         const t = e.target;
         if (!(t instanceof Element)) return;
-        const aiToggle = t.closest("[data-ucrd-ai-mode-toggle]");
-        if (aiToggle && ucrdModalEl.contains(aiToggle)) {
+        const jumper = t.closest("[data-ucrd-jumper]");
+        if (jumper && ucrdModalEl.contains(jumper)) {
           e.preventDefault();
-          try {
-            chrome.storage.local.get(["geminiAiEnabled"], (r) => {
-              if (chrome.runtime.lastError || !ucrdModalEl || ucrdModalEl.hasAttribute("hidden")) return;
-              const wasOn = r.geminiAiEnabled !== false;
-              const nowOn = !wasOn;
-              chrome.storage.local.set({ geminiAiEnabled: nowOn }, () => {
-                if (!ucrdModalEl || ucrdModalEl.hasAttribute("hidden")) return;
-                const panel = ucrdModalEl.querySelector(`[data-ucrd-panel="${UCRD_TAB.AI}"]`);
-                syncAiGeminiSettingsBar(panel);
-                if (!ucrdModalLoadCtx) return;
-                if (nowOn) kickoffAiPanelLoads(ucrdModalLoadCtx);
-                else {
-                  replaceDataPanel(
-                    UCRD_TAB.AI,
-                    renderAiPanelHtml(ucrdModalLoadCtx, {
-                      status: "disabled",
-                      message: "AI Mode is off. Turn AI Mode on above to generate summaries.",
-                    })
-                  );
-                }
-              });
-            });
-          } catch {
-            /* ignore */
-          }
+          const key = jumper.getAttribute("data-ucrd-jumper");
+          if (key) setActiveJumper(key);
           return;
         }
         const closeKind = t.closest("[data-ucrd-close]")?.getAttribute("data-ucrd-close");
         if (closeKind === "overlay" || closeKind === "x") closeUcrdModal();
-      });
-
-      ucrdModalEl.addEventListener(
-        "focusout",
-        (e) => {
-          const t = e.target;
-          if (!(t instanceof Element)) return;
-          const inp = t.closest("[data-ucrd-gemini-api-key]");
-          if (!inp || !ucrdModalEl.contains(inp)) return;
-          const v = String(inp.value || "").trim();
-          if (!v) return;
-          try {
-            chrome.storage.local.set({ geminiApiKey: v }, () => {
-              inp.value = "";
-              const panel = inp.closest(`[data-ucrd-panel="${UCRD_TAB.AI}"]`);
-              syncAiGeminiSettingsBar(panel);
-              chrome.storage.local.get(["geminiAiEnabled"], (r2) => {
-                if (r2.geminiAiEnabled !== false && ucrdModalLoadCtx) kickoffAiPanelLoads(ucrdModalLoadCtx);
-              });
-            });
-          } catch {
-            /* ignore */
-          }
-        },
-        true
-      );
-
-      ucrdModalEl.querySelectorAll("[data-ucrd-tab-btn]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const key = btn.getAttribute("data-ucrd-tab-btn");
-          if (key) setActiveTab(key);
-        });
       });
 
       const scrollHost = ucrdModalEl.querySelector(".ucrd-modal-scroll");
@@ -1903,16 +1878,28 @@
       }
     }
 
+    const jumpersNav = ucrdModalEl.querySelector(".ucrd-modal-jumpers");
+    if (jumpersNav) {
+      const initialTab = UCRD_JUMPER_META.some((j) => j.tab === tab) ? tab : UCRD_TAB.GPA;
+      jumpersNav.innerHTML = buildModalJumpersHtml(initialTab);
+    }
+    updateModalHeaderMeta(ctx);
+
     const panels = ucrdModalEl.querySelector(".ucrd-modal-panels");
     if (panels) panels.innerHTML = buildModalPanelsHTML(ctx, { status: "loading" });
-    const aiPanel0 = panels?.querySelector(`[data-ucrd-panel="${UCRD_TAB.AI}"]`);
-    if (aiPanel0) syncAiGeminiSettingsBar(aiPanel0);
 
     ucrdModalEl.removeAttribute("hidden");
     document.documentElement.classList.add("ucrd-modal-open");
     if (document.body) document.body.classList.add("ucrd-modal-open");
 
-    setActiveTab(tab);
+    const scrollTarget = tab || UCRD_TAB.GPA;
+    if (UCRD_JUMPER_META.some((j) => j.tab === scrollTarget)) {
+      setActiveJumper(scrollTarget, { scroll: false });
+    }
+    requestAnimationFrame(() => {
+      scrollToModalSection(scrollTarget);
+      setupModalScrollSpy();
+    });
 
     kickoffSidePanelLoads(ctx);
 
@@ -1926,16 +1913,28 @@
       if (!ucrdModalEl || ucrdModalEl.hasAttribute("hidden")) return;
       if (res.ok) ucrdGpaPanelPayload = res;
       else ucrdGpaPanelPayload = null;
-      const html = res.ok
-        ? renderGpaPanel(ctx, { status: "ok", payload: res })
-        : renderGpaPanel(ctx, { status: "error", message: res.error || "Could not load grade data." });
+      let html;
+      try {
+        html = res.ok
+          ? renderGpaPanel(ctx, { status: "ok", payload: res })
+          : renderGpaPanel(ctx, { status: "error", message: res.error || "Could not load grade data." });
+      } catch (err) {
+        console.error("[UCRX] GPA panel render failed", err);
+        html = renderGpaPanel(ctx, {
+          status: "error",
+          message: err?.message || "Could not display grade data.",
+        });
+      }
       replaceGpaPanel(html);
       const dash = ucrdModalEl.querySelector("[data-ucrd-mcg-dashboard]");
       if (dash) {
         ucrdMcgInstructor = dash.getAttribute("data-ucrd-mcg-instructor") || "";
         ucrdMcgTermKey = dash.getAttribute("data-ucrd-mcg-term") || "";
       }
-      setActiveTab(ucrdModalEl.dataset.ucrdActiveTab || tab);
+      const active = ucrdModalEl.dataset.ucrdActiveTab;
+      if (active && UCRD_JUMPER_META.some((j) => j.tab === active)) {
+        setActiveJumper(active, { scroll: false });
+      }
     });
 
     if (!ucrdModalEscapeHandler) {

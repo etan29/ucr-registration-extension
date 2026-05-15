@@ -1,16 +1,20 @@
 {
   "manifest_version": 3,
-  "name": "UCR Class Search — Data column",
-  "version": "0.2.0",
-  "description": "Adds a Data column to UCR class search with GPA, RMP, difficulty sheet, and optional Gemini summary.",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "name": "UCR Registration Extension",
+  "version": "1.0.0",
+  "description": "GPA, RMP, and difficulty under Course Delivery on UCR class search, plus a detail modal. Only on registrationssb.ucr.edu.",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "permissions": ["storage"],
   "host_permissions": [
     "https://registrationssb.ucr.edu/StudentRegistrationSsb/*",
     "https://myclassgrades.com/*",
     "https://api.myclassgrades.com/*",
     "https://www.ratemyprofessors.com/*",
-    "https://docs.google.com/*",
-    "https://generativelanguage.googleapis.com/*"
+    "https://docs.google.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -22,6 +26,20 @@
       "css": ["styles.css"],
       "run_at": "document_idle",
       "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icon48.png",
+        "grades-gold.svg",
+        "grades-black.svg",
+        "rmp-gold.svg",
+        "rmp-black.svg",
+        "reviews-gold.svg",
+        "reviews-black.svg"
+      ],
+      "matches": ["https://registrationssb.ucr.edu/*"]
     }
   ]
 }

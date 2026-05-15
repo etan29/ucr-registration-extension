@@ -2,13 +2,12 @@
  * background.js (MV3 Service Worker)
  *
  * All cross-origin fetching happens here to bypass CORS.
- * Includes debug logging for every fetch attempt.
  */
 
-const UA_REDDIT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) UCRHackathonApp/1.0";
+const DEBUG = false;
+
 const UA_BROWSER =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 UCRHackathonApp/1.0";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 UCRRegistrationExtension/1.0.0";
 
 const GRADES_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1qiy_Oi8aFiPmL4QSTR3zHe74kmvc6e_159L1mAUUlU0/gviz/tq?tqx=out:csv";
@@ -68,16 +67,14 @@ async function cachedFetch(key, fetcher, ttlMs = DEFAULT_CACHE_TTL_MS) {
   return { ok: true, cached: false, data };
 }
 
-async function getGeminiApiKey() {
-  const stored = await chrome.storage.local.get("geminiApiKey");
-  const k = String(stored?.geminiApiKey ?? "").trim();
-  return k || null;
-}
-
 /** Cached raw CSV string — avoids re-downloading the full sheet on every click */
 let cachedGradeData = null;
 
-// ---------- Debug helpers ----------
+// ---------- Logging ----------
+
+function debugLog(...args) {
+  if (DEBUG) console.log(...args);
+}
 
 function previewText(text, max = 200) {
   const s = String(text ?? "");
@@ -91,7 +88,7 @@ function previewText(text, max = 200) {
  * @param {string} [bodyText] full body when logging failure
  */
 function logFetchOk(label, url, res, bodyText) {
-  console.log(
+  debugLog(
     `[UCRX bg] ${label} OK status=${res.status} url=${url} len=${bodyText?.length ?? 0}`
   );
 }
@@ -359,7 +356,7 @@ function parseRmpHtmlMetricsForName(html, profName) {
 async function enrichRmpFromProfilePage(base, legacyId) {
   if (!Number.isFinite(legacyId)) return base;
   const url = buildRmpProfileUrl(legacyId);
-  console.log(`[UCRX bg] RMP profile fetch start url=${url}`);
+  debugLog(`[UCRX bg] RMP profile fetch start url=${url}`);
   let text;
   try {
     text = await fetchRmpHtml(url);
@@ -390,7 +387,7 @@ async function enrichRmpFromProfilePage(base, legacyId) {
 
 async function getRmpProfessorData(profName) {
   const url = buildRmpSearchUrl(profName);
-  console.log(`[UCRX bg] RMP search fetch start url=${url}`);
+  debugLog(`[UCRX bg] RMP search fetch start url=${url}`);
 
   let text;
   try {
@@ -425,7 +422,7 @@ async function getRmpProfessorData(profName) {
     };
   }
 
-  console.log(
+  debugLog(
     `[UCRX bg] RMP: no match for "${profName}" preview=${previewText(text)}`
   );
   return { found: false, useSearchFallback: true };
@@ -441,7 +438,7 @@ function normCourseKey(s) {
 }
 
 async function fetchTextWithDebug(label, url, init) {
-  console.log(`[UCRX bg] ${label} fetch start url=${url}`);
+  debugLog(`[UCRX bg] ${label} fetch start url=${url}`);
   let res;
   let text;
   try {
@@ -531,7 +528,7 @@ function normHeader(s) {
  */
 async function getCachedGradeCsv() {
   if (cachedGradeData != null) {
-    console.log(
+    debugLog(
       `[UCRX bg] Sheet CSV: using cached data len=${cachedGradeData.length}`
     );
     return cachedGradeData;
@@ -668,7 +665,7 @@ async function getHistoricalGrades(courseCode, professorName = "") {
   const csv = await getCachedGradeCsv();
   const rows = parseCsv(csv);
   if (rows.length < 1) {
-    console.log("[UCRX bg] Historical sheet: empty CSV");
+    debugLog("[UCRX bg] Historical sheet: empty CSV");
     return { found: false };
   }
 
@@ -721,7 +718,7 @@ async function getHistoricalGrades(courseCode, professorName = "") {
   }
 
   if (!matchingRows.length) {
-    console.log(
+    debugLog(
       `[UCRX bg] Historical sheet: no block found for class key="${courseKey}"`
     );
     return { found: false };
@@ -767,7 +764,7 @@ async function getHistoricalGrades(courseCode, professorName = "") {
   const classDisplay =
     String(courseCode ?? "").trim() || courseKey.toUpperCase();
 
-  console.log(
+  debugLog(
     `[UCRX bg] Historical sheet: class=${courseKey} rows=${matchingRows.length} comments=${comments.length} profFilter=${!!lastNameKey} profMatched=${professorSpecificComments.length > 0}`
   );
 
@@ -1332,87 +1329,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             error: e?.message ?? "Unknown error",
             status: e?.status,
             body: previewText(e?.body),
-          });
-        }
-        return;
-      }
-
-      case "FETCH_GEMINI_SUMMARY": {
-        const courseCode = String(message.courseCode ?? "").trim();
-        const professorKey = String(message.professorKey ?? "").trim();
-        const sources = message.sources ?? null;
-        if (!courseCode || !sources) {
-          sendResponse({ ok: false, error: "Missing courseCode or sources" });
-          return;
-        }
-
-        try {
-          const key = cacheKey("GEMINI", `${courseCode}::${professorKey || "all"}`);
-          const cached = await cachedFetch(
-            key,
-            async () => {
-              const apiKey = await getGeminiApiKey();
-              if (!apiKey) {
-                throw new Error(
-                  "Missing Gemini API key. Set chrome.storage.local.geminiApiKey"
-                );
-              }
-
-              const url =
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=" +
-                encodeURIComponent(apiKey);
-
-              const prompt = `You are an academic advisor for a university student choosing classes.\n\nYou will be given 3 data sources:\n- RMP (professor rating summary)\n- CourseData (MyClassGrades: grade distribution + course reviews)\n- Difficulty Database (average difficulty + student comments)\n\nYour job: synthesize them into a STRICT JSON object with EXACTLY these keys:\n- overallDifficulty: integer 1-10 (10 = hardest)\n- sentiment: string, max 3 sentences\n- tips: array of exactly 3 short strings\n- mistakes: array of exactly 3 short strings\n\nReturn ONLY JSON. No markdown. No extra keys.\n\nDATA:\n${JSON.stringify(sources)}`;
-
-              const res = await fetch(url, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Accept: "application/json",
-                  "User-Agent": UA_BROWSER
-                },
-                body: JSON.stringify({
-                  contents: [{ role: "user", parts: [{ text: prompt }] }],
-                  generationConfig: {
-                    temperature: 0.4,
-                    responseMimeType: "application/json"
-                  }
-                })
-              });
-
-              const text = await res.text().catch(() => "");
-              if (!res.ok) {
-                const err = new Error(`Gemini fetch failed (${res.status})`);
-                err.status = res.status;
-                err.body = text;
-                throw err;
-              }
-
-              const json = JSON.parse(text);
-              const outText =
-                json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-              const parsed = JSON.parse(outText);
-
-              // Basic shape validation
-              const keys = Object.keys(parsed || {});
-              const wantKeys = ["overallDifficulty", "sentiment", "tips", "mistakes"];
-              const exact =
-                keys.length === wantKeys.length &&
-                wantKeys.every((k) => keys.includes(k));
-              if (!exact) throw new Error("Gemini returned unexpected JSON shape");
-
-              return parsed;
-            },
-            1000 * 60 * 60 * 6 // 6h cache for AI output
-          );
-
-          sendResponse({ ok: true, data: cached.data, cached: cached.cached });
-        } catch (e) {
-          sendResponse({
-            ok: false,
-            error: e?.message ?? "Unknown error",
-            status: e?.status,
-            body: previewText(e?.body)
           });
         }
         return;
