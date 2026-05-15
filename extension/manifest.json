@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "UCR Class Search — Data column",
+  "version": "0.2.0",
+  "description": "Adds a Data column to UCR class search with GPA, RMP, difficulty sheet, and optional Gemini summary.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "https://registrationssb.ucr.edu/StudentRegistrationSsb/*",
+    "https://myclassgrades.com/*",
+    "https://api.myclassgrades.com/*",
+    "https://www.ratemyprofessors.com/*",
+    "https://docs.google.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://registrationssb.ucr.edu/StudentRegistrationSsb/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}

@@ -1,0 +1,1187 @@
+/**
+ * UCR Class Search — GPA / RMP scores under Course Delivery
+ */
+
+table > tbody > tr > td.ucrd-delivery-enhanced,
+table tbody tr > td.ucrd-delivery-enhanced {
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+  vertical-align: top !important;
+}
+
+.ucrd-delivery-stack {
+  display: block !important;
+  margin-top: 0.2em !important;
+  line-height: 1.35 !important;
+}
+
+.ucrd-delivery-scores {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: baseline !important;
+  gap: 0.2em 0.35em !important;
+}
+
+.ucrd-delivery-scores a.ucrd-delivery-num {
+  text-decoration: underline !important;
+  cursor: pointer !important;
+  font-weight: 600 !important;
+}
+
+.ucrd-delivery-sep {
+  color: #9ca3af !important;
+  user-select: none !important;
+}
+
+/* --- Modal (data detail popup) --- */
+html.ucrd-modal-open,
+body.ucrd-modal-open {
+  overflow: hidden !important;
+}
+
+.ucrd-modal-root {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1.25rem !important;
+  box-sizing: border-box !important;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+.ucrd-modal-root[hidden] {
+  display: none !important;
+}
+
+.ucrd-modal-overlay {
+  position: absolute !important;
+  inset: 0 !important;
+  background: rgba(0, 0, 0, 0.55) !important;
+  cursor: pointer !important;
+}
+
+.ucrd-modal-dialog {
+  position: relative !important;
+  z-index: 1 !important;
+  width: min(56rem, calc(100vw - 2rem)) !important;
+  height: min(34rem, 72vh) !important;
+  max-height: 72vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  background: #fff !important;
+  color: #1a1a1a !important;
+  border-radius: 0 !important;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28) !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+  text-align: left !important;
+}
+
+.ucrd-modal-header {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 0.5rem !important;
+  flex: 0 0 auto !important;
+  padding: 0.75rem 0.75rem 0.65rem 0.85rem !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  box-sizing: border-box !important;
+}
+
+.ucrd-modal-scroll {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding: 0.85rem 1rem 1.1rem !important;
+  box-sizing: border-box !important;
+}
+
+.ucrd-modal-x {
+  position: relative !important;
+  flex: 0 0 auto !important;
+  width: 2.25rem !important;
+  height: 2.25rem !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 0 !important;
+  background: #f9fafb !important;
+  color: #374151 !important;
+  font-size: 1.35rem !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+}
+
+.ucrd-modal-x:hover {
+  background: #f3f4f6 !important;
+  color: #111 !important;
+}
+
+.ucrd-modal-tabs {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 0.4rem !important;
+  margin: 0 !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+}
+
+.ucrd-tab-pill {
+  border: 1px solid #c8ccd0 !important;
+  background: #f3f4f6 !important;
+  color: #333 !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  padding: 0.35rem 0.65rem !important;
+  border-radius: 999px !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+}
+
+.ucrd-tab-pill:hover {
+  background: #e8eaee !important;
+}
+
+.ucrd-tab-pill.ucrd-tab-active {
+  background: #2563eb !important;
+  border-color: #1d4ed8 !important;
+  color: #fff !important;
+}
+
+.ucrd-modal-panels {
+  min-height: 2rem !important;
+}
+
+.ucrd-panel[hidden] {
+  display: none !important;
+}
+
+.ucrd-gpa-headline {
+  margin: 0 0 0.35rem !important;
+  font-size: 1.35rem !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+}
+
+.ucrd-gpa-muted {
+  margin: 0.15rem 0 !important;
+  font-size: 0.82rem !important;
+  color: #6b7280 !important;
+  line-height: 1.4 !important;
+}
+
+.ucrd-gpa-terms {
+  margin-top: 0.5rem !important;
+}
+
+.ucrd-gpa-course {
+  text-transform: uppercase !important;
+  letter-spacing: 0.03em !important;
+  font-size: 0.78rem !important;
+  line-height: 1.35 !important;
+}
+
+.ucrd-gpa-loading {
+  margin: 2rem 0 !important;
+  text-align: center !important;
+}
+
+.ucrd-gpa-error {
+  margin: 0.5rem 0 0 !important;
+  color: #b91c1c !important;
+  font-size: 0.9rem !important;
+}
+
+.ucrd-grade-chart {
+  display: flex !important;
+  align-items: stretch !important;
+  justify-content: space-between !important;
+  gap: 4px !important;
+  height: 220px !important;
+  margin: 1rem 0 0.5rem !important;
+  padding: 0 0.15rem !important;
+  box-sizing: border-box !important;
+}
+
+.ucrd-grade-col {
+  position: relative !important;
+  z-index: 0 !important;
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  height: 100% !important;
+}
+
+.ucrd-grade-bar-track {
+  position: relative !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  max-width: 40px !important;
+  margin: 0 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-end !important;
+  align-items: stretch !important;
+}
+
+.ucrd-grade-tooltip-float {
+  position: fixed !important;
+  min-width: 9.5rem !important;
+  max-width: min(14rem, calc(100vw - 16px)) !important;
+  padding: 0.45rem 0.55rem !important;
+  box-sizing: border-box !important;
+  background: #111827 !important;
+  color: #f9fafb !important;
+  border-radius: 4px !important;
+  font-size: 0.68rem !important;
+  line-height: 1.35 !important;
+  text-align: left !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35) !important;
+  pointer-events: none !important;
+  z-index: 2147483646 !important;
+}
+
+.ucrd-grade-tooltip-float[hidden] {
+  display: none !important;
+}
+
+.ucrd-grade-tip-title {
+  font-weight: 700 !important;
+  font-size: 0.78rem !important;
+  letter-spacing: 0.02em !important;
+  margin: 0 0 0.35rem !important;
+  color: #fff !important;
+}
+
+.ucrd-grade-tip-line {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: baseline !important;
+  gap: 0.65rem !important;
+  margin: 0.12rem 0 0 !important;
+  color: #d1d5db !important;
+}
+
+.ucrd-grade-tip-line span {
+  font-weight: 500 !important;
+  color: #9ca3af !important;
+}
+
+.ucrd-grade-tip-line strong {
+  font-weight: 700 !important;
+  font-variant-numeric: tabular-nums !important;
+  color: #f3f4f6 !important;
+}
+
+.ucrd-grade-bar {
+  width: 100% !important;
+  min-height: 2px !important;
+  border-radius: 0 !important;
+  flex: 0 0 auto !important;
+}
+
+.ucrd-grade-label {
+  flex: 0 0 auto !important;
+  margin-top: 0.35rem !important;
+  font-size: 0.62rem !important;
+  color: #4b5563 !important;
+  text-align: center !important;
+  line-height: 1.1 !important;
+}
+
+.ucrd-mini-chart {
+  display: flex !important;
+  align-items: stretch !important;
+  justify-content: space-between !important;
+  gap: 1px !important;
+  height: 36px !important;
+  width: 100% !important;
+  min-width: 5.5rem !important;
+}
+
+.ucrd-mini-chart .ucrd-grade-col {
+  min-width: 0 !important;
+}
+
+.ucrd-mini-chart .ucrd-grade-bar-track {
+  max-width: 10px !important;
+}
+
+.ucrd-mini-bar {
+  border-radius: 0 !important;
+  min-height: 1px !important;
+}
+
+.ucrd-mini-chart .ucrd-grade-label {
+  display: none !important;
+}
+
+.ucrd-term-nochart {
+  font-size: 0.75rem !important;
+  color: #9ca3af !important;
+}
+
+.ucrd-term-note {
+  margin: 0 0 0.5rem !important;
+}
+
+.ucrd-term-table-wrap {
+  overflow-x: auto !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 0 !important;
+}
+
+.ucrd-term-table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  font-size: 0.75rem !important;
+}
+
+.ucrd-term-table th,
+.ucrd-term-table td {
+  padding: 0.4rem 0.45rem !important;
+  text-align: left !important;
+  vertical-align: middle !important;
+  border-bottom: 1px solid #f3f4f6 !important;
+}
+
+.ucrd-term-table th {
+  font-weight: 700 !important;
+  color: #374151 !important;
+  background: #f9fafb !important;
+}
+
+.ucrd-term-gpa {
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+.ucrd-term-n {
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+.ucrd-term-inst {
+  max-width: 9rem !important;
+}
+
+.ucrd-term-chart {
+  min-width: 6rem !important;
+}
+
+/* --- MyClassGrades dashboard (Avg GPA tab) --- */
+.ucrd-mcg-filters {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 0.65rem !important;
+  margin: 0.5rem 0 0.85rem !important;
+}
+
+.ucrd-mcg-select-wrap {
+  flex: 1 1 11rem !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+}
+
+.ucrd-mcg-select {
+  width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 0.45rem 0.65rem !important;
+  border: 1px solid #9ca3af !important;
+  border-radius: 2px !important;
+  background: #fff !important;
+  color: #111 !important;
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+}
+
+.ucrd-mcg-select:hover {
+  border-color: #6b7280 !important;
+}
+
+.ucrd-mcg-select:focus {
+  outline: none !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 1px #2563eb !important;
+}
+
+.ucrd-mcg-layout {
+  display: grid !important;
+  grid-template-columns: 1fr minmax(10.5rem, 13.5rem) !important;
+  gap: 0.75rem 1.25rem !important;
+  align-items: center !important;
+}
+
+.ucrd-mcg-left {
+  min-width: 0 !important;
+}
+
+.ucrd-mcg-bar-panel {
+  display: flex !important;
+  gap: 0.35rem !important;
+  align-items: stretch !important;
+}
+
+.ucrd-mcg-bar-yaxis {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  flex: 0 0 2.25rem !important;
+  font-size: 0.65rem !important;
+  color: #6b7280 !important;
+  padding-bottom: 1.35rem !important;
+  box-sizing: border-box !important;
+}
+
+.ucrd-mcg-ytick {
+  line-height: 1 !important;
+  text-align: right !important;
+}
+
+.ucrd-mcg-bar-main {
+  position: relative !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+}
+
+.ucrd-mcg-bar-grid {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 1.35rem !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+}
+
+.ucrd-mcg-gridline {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 1px !important;
+  background: #e5e7eb !important;
+  transform: translateY(50%) !important;
+}
+
+.ucrd-mcg-bar-chart {
+  position: relative !important;
+  z-index: 1 !important;
+  height: 180px !important;
+  margin: 0 !important;
+  padding: 0 0.1rem 0 !important;
+}
+
+.ucrd-mcg-bar-chart .ucrd-grade-bar-track {
+  max-width: 100% !important;
+}
+
+.ucrd-mcg-bar-fill {
+  width: 100% !important;
+  border-radius: 2px 2px 0 0 !important;
+  min-height: 2px !important;
+}
+
+.ucrd-mcg-bar-xaxis {
+  display: flex !important;
+  justify-content: space-between !important;
+  gap: 4px !important;
+  padding: 0.25rem 0 0 !important;
+  margin-left: 0 !important;
+}
+
+.ucrd-mcg-xlabel {
+  flex: 1 1 0 !important;
+  text-align: center !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  color: #374151 !important;
+}
+
+.ucrd-mcg-donut-wrap {
+  position: relative !important;
+  width: 11.5rem !important;
+  height: 11.5rem !important;
+  margin: 0 auto !important;
+}
+
+.ucrd-mcg-donut {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 50% !important;
+}
+
+.ucrd-mcg-donut-center {
+  position: absolute !important;
+  inset: 26% !important;
+  background: #fff !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  padding: 0.35rem !important;
+  box-sizing: border-box !important;
+}
+
+.ucrd-mcg-donut-line {
+  margin: 0 0 0.2rem !important;
+  font-size: 0.62rem !important;
+  line-height: 1.25 !important;
+  color: #111 !important;
+}
+
+.ucrd-mcg-donut-line strong {
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+}
+
+.ucrd-mcg-donut-sub {
+  margin: 0 !important;
+  font-size: 0.58rem !important;
+  color: #6b7280 !important;
+  line-height: 1.2 !important;
+}
+
+@media (max-width: 540px) {
+  .ucrd-mcg-layout {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.ucrd-bar-a {
+  background: linear-gradient(180deg, #22c55e, #16a34a) !important;
+}
+.ucrd-bar-b {
+  background: linear-gradient(180deg, #84cc16, #65a30d) !important;
+}
+.ucrd-bar-c {
+  background: linear-gradient(180deg, #eab308, #ca8a04) !important;
+}
+.ucrd-bar-d {
+  background: linear-gradient(180deg, #f97316, #c2410c) !important;
+}
+.ucrd-bar-f {
+  background: linear-gradient(180deg, #b91c1c, #7f1d1d) !important;
+}
+
+.ucrd-gpa-npw {
+  margin-bottom: 1rem !important;
+}
+
+.ucrd-gpa-subhead {
+  margin: 0 0 0.4rem !important;
+  font-size: 0.88rem !important;
+  font-weight: 700 !important;
+  color: #111 !important;
+}
+
+.ucrd-gpa-subhead-spaced {
+  margin-top: 1.15rem !important;
+}
+
+.ucrd-gpa-inst-list {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.ucrd-gpa-inst-list li {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: baseline !important;
+  gap: 0.75rem !important;
+  font-size: 0.82rem !important;
+  padding: 0.2rem 0 !important;
+}
+
+.ucrd-gpa-inst-list li.ucrd-inst-highlight {
+  background: #eff6ff !important;
+  padding: 0.35rem 0.45rem !important;
+  margin: 0.15rem -0.35rem !important;
+  border-left: 3px solid #2563eb !important;
+}
+
+.ucrd-gpa-inst-name {
+  font-weight: 600 !important;
+  color: #111 !important;
+}
+
+.ucrd-inst-star {
+  color: #b45309 !important;
+  font-size: 0.75rem !important;
+  margin-right: 0.2rem !important;
+  flex: 0 0 auto !important;
+}
+
+.ucrd-gpa-matched {
+  margin-top: 0.35rem !important;
+}
+
+.ucrd-gpa-placeholder {
+  font-size: 0.8rem !important;
+}
+
+.ucrd-panel-placeholder .ucrd-ph-title {
+  margin: 0 0 0.5rem !important;
+  font-size: 1.1rem !important;
+  font-weight: 700 !important;
+}
+
+.ucrd-panel-placeholder .ucrd-ph-body {
+  margin: 0 !important;
+  font-size: 0.88rem !important;
+  color: #555 !important;
+  line-height: 1.45 !important;
+}
+
+.ucrd-sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.ucrd-ext-link {
+  color: #2563eb !important;
+  text-decoration: underline !important;
+}
+
+.ucrd-rmp-metrics {
+  margin: 0.5rem 0 !important;
+  font-size: 0.92rem !important;
+  line-height: 1.45 !important;
+}
+
+.ucrd-rmp-block {
+  border-top: 1px solid #e5e7eb !important;
+  padding: 0.75rem 0 0.35rem !important;
+  margin-top: 0.65rem !important;
+}
+
+.ucrd-rmp-block:first-of-type {
+  border-top: none !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+.ucrd-rmp-block-name {
+  margin: 0 0 0.35rem !important;
+  font-size: 0.95rem !important;
+  font-weight: 700 !important;
+  color: #111 !important;
+}
+
+.ucrd-rmp-primary-badge {
+  display: inline-block !important;
+  margin-left: 0.35rem !important;
+  font-size: 0.65rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+  color: #1d4ed8 !important;
+  border: 1px solid #93c5fd !important;
+  padding: 0.08rem 0.35rem !important;
+  border-radius: 999px !important;
+  vertical-align: middle !important;
+}
+
+.ucrd-rmp-hero {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 1rem 1.25rem !important;
+  align-items: flex-start !important;
+  margin-bottom: 0.85rem !important;
+}
+
+.ucrd-rmp-hero-score {
+  flex: 0 0 auto !important;
+  min-width: 5.5rem !important;
+}
+
+.ucrd-rmp-hero-num {
+  font-size: 2.35rem !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  color: #111 !important;
+}
+
+.ucrd-rmp-hero-of {
+  font-size: 1.1rem !important;
+  font-weight: 700 !important;
+  color: #6b7280 !important;
+  margin-left: 0.15rem !important;
+}
+
+.ucrd-rmp-hero-label {
+  display: block !important;
+  margin-top: 0.2rem !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  color: #6b7280 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+}
+
+.ucrd-rmp-hero-meta {
+  flex: 1 1 12rem !important;
+  min-width: 0 !important;
+}
+
+.ucrd-rmp-prof-name {
+  margin: 0 0 0.25rem !important;
+  font-size: 1.25rem !important;
+  font-weight: 800 !important;
+  color: #111 !important;
+}
+
+.ucrd-rmp-subline,
+.ucrd-rmp-row-instructor {
+  margin: 0.15rem 0 0 !important;
+  font-size: 0.82rem !important;
+}
+
+.ucrd-rmp-stats {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 0.5rem !important;
+  margin: 0 0 0.85rem !important;
+}
+
+.ucrd-rmp-stat {
+  flex: 1 1 5.5rem !important;
+  min-width: 5rem !important;
+  padding: 0.45rem 0.55rem !important;
+  background: #f3f4f6 !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 8px !important;
+  box-sizing: border-box !important;
+}
+
+.ucrd-rmp-stat-val {
+  display: block !important;
+  font-size: 1.05rem !important;
+  font-weight: 800 !important;
+  color: #111 !important;
+}
+
+.ucrd-rmp-stat-label {
+  display: block !important;
+  margin-top: 0.1rem !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  color: #6b7280 !important;
+}
+
+.ucrd-rmp-body-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) !important;
+  gap: 0.85rem 1rem !important;
+  align-items: start !important;
+}
+
+@media (max-width: 640px) {
+  .ucrd-rmp-body-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.ucrd-rmp-dist-rows {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.35rem !important;
+}
+
+.ucrd-rmp-dist-row {
+  display: grid !important;
+  grid-template-columns: 4.5rem 3.2rem 1fr 1.6rem !important;
+  gap: 0.35rem 0.45rem !important;
+  align-items: center !important;
+  font-size: 0.78rem !important;
+}
+
+.ucrd-rmp-dist-label {
+  color: #374151 !important;
+  font-weight: 600 !important;
+}
+
+.ucrd-rmp-dist-stars {
+  color: #2563eb !important;
+  letter-spacing: -0.05em !important;
+  font-size: 0.72rem !important;
+}
+
+.ucrd-rmp-dist-track {
+  height: 0.55rem !important;
+  background: #e5e7eb !important;
+  border-radius: 999px !important;
+  overflow: hidden !important;
+}
+
+.ucrd-rmp-dist-fill {
+  height: 100% !important;
+  background: #2563eb !important;
+  border-radius: 999px !important;
+  min-width: 2px !important;
+}
+
+.ucrd-rmp-dist-count {
+  text-align: right !important;
+  color: #6b7280 !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+.ucrd-rmp-reviews .ucrd-gpa-subhead {
+  margin-top: 0 !important;
+}
+
+.ucrd-rmp-review-scroll {
+  max-height: 42vh !important;
+  overflow-y: auto !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 8px !important;
+  padding: 0.35rem !important;
+  box-sizing: border-box !important;
+}
+
+.ucrd-rmp-review {
+  display: flex !important;
+  gap: 0.65rem !important;
+  padding: 0.55rem 0.45rem !important;
+  border-bottom: 1px solid #f3f4f6 !important;
+}
+
+.ucrd-rmp-review:last-child {
+  border-bottom: none !important;
+}
+
+.ucrd-rmp-review-match {
+  background: #eff6ff !important;
+  border-radius: 6px !important;
+}
+
+.ucrd-rmp-review-scores {
+  flex: 0 0 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.35rem !important;
+}
+
+.ucrd-rmp-score {
+  width: 3.1rem !important;
+  padding: 0.35rem 0.25rem !important;
+  border-radius: 6px !important;
+  text-align: center !important;
+  box-sizing: border-box !important;
+}
+
+.ucrd-rmp-score-label {
+  display: block !important;
+  font-size: 0.58rem !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.03em !important;
+  color: #6b7280 !important;
+}
+
+.ucrd-rmp-score-val {
+  display: block !important;
+  font-size: 1.05rem !important;
+  font-weight: 800 !important;
+  line-height: 1.15 !important;
+}
+
+.ucrd-rmp-score-quality.ucrd-rmp-score-good {
+  background: #dcfce7 !important;
+  color: #166534 !important;
+}
+
+.ucrd-rmp-score-quality.ucrd-rmp-score-mid {
+  background: #fef9c3 !important;
+  color: #854d0e !important;
+}
+
+.ucrd-rmp-score-quality.ucrd-rmp-score-low {
+  background: #fee2e2 !important;
+  color: #991b1b !important;
+}
+
+.ucrd-rmp-score-quality.ucrd-rmp-score-neutral {
+  background: #f3f4f6 !important;
+  color: #374151 !important;
+}
+
+.ucrd-rmp-score-diff {
+  background: #f3f4f6 !important;
+  color: #374151 !important;
+}
+
+.ucrd-rmp-review-body {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+}
+
+.ucrd-rmp-review-head {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: baseline !important;
+  gap: 0.35rem 0.5rem !important;
+  margin-bottom: 0.25rem !important;
+}
+
+.ucrd-rmp-review-class {
+  font-size: 0.92rem !important;
+  color: #111 !important;
+}
+
+.ucrd-rmp-course-badge {
+  font-size: 0.62rem !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  color: #1d4ed8 !important;
+  background: #dbeafe !important;
+  border-radius: 999px !important;
+  padding: 0.1rem 0.4rem !important;
+}
+
+.ucrd-rmp-review-date {
+  margin-left: auto !important;
+  font-size: 0.75rem !important;
+  color: #6b7280 !important;
+}
+
+.ucrd-rmp-review-meta {
+  margin: 0 0 0.35rem !important;
+  font-size: 0.75rem !important;
+  color: #4b5563 !important;
+  line-height: 1.35 !important;
+}
+
+.ucrd-rmp-review-text {
+  margin: 0 0 0.35rem !important;
+  font-size: 0.82rem !important;
+  line-height: 1.45 !important;
+  color: #111 !important;
+  white-space: pre-line !important;
+}
+
+.ucrd-rmp-tags {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 0.3rem !important;
+}
+
+.ucrd-rmp-tag {
+  font-size: 0.65rem !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.03em !important;
+  padding: 0.12rem 0.38rem !important;
+  background: #f3f4f6 !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 999px !important;
+  color: #374151 !important;
+}
+
+.ucrd-rmp-foot {
+  margin-top: 0.65rem !important;
+}
+
+.ucrd-sheet-scroll {
+  max-height: 42vh !important;
+  overflow-y: auto !important;
+  border: 1px solid #e5e7eb !important;
+  padding: 0.5rem !important;
+  margin: 0.65rem 0 !important;
+  box-sizing: border-box !important;
+}
+
+.ucrd-sheet-card {
+  font-size: 0.82rem !important;
+  line-height: 1.4 !important;
+  padding: 0.45rem 0.5rem !important;
+  margin-bottom: 0.4rem !important;
+  background: #f9fafb !important;
+  border-left: 3px solid #d1d5db !important;
+  white-space: pre-line !important;
+}
+
+.ucrd-sheet-disclaimer {
+  font-size: 0.8rem !important;
+  color: #92400e !important;
+  margin: 0.35rem 0 !important;
+}
+
+.ucrd-sheet-foot {
+  margin-top: 0.5rem !important;
+}
+
+.ucrd-ai-settings {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.65rem 1rem !important;
+  margin: 0 0 0.9rem !important;
+  padding: 0.55rem 0.65rem !important;
+  background: #f9fafb !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 10px !important;
+  box-sizing: border-box !important;
+}
+
+.ucrd-ai-settings-left,
+.ucrd-ai-settings-right {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.45rem !important;
+  min-width: 0 !important;
+}
+
+.ucrd-ai-settings-right {
+  flex: 1 1 12rem !important;
+  justify-content: flex-end !important;
+}
+
+.ucrd-ai-settings-label {
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+  color: #374151 !important;
+  white-space: nowrap !important;
+}
+
+.ucrd-ai-key-label {
+  flex-shrink: 0 !important;
+}
+
+.ucrd-ai-mode-toggle {
+  position: relative !important;
+  width: 3.35rem !important;
+  height: 1.55rem !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 999px !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  background: #d1d5db !important;
+  transition: background 0.15s ease !important;
+}
+
+.ucrd-ai-mode-toggle.ucrd-ai-toggle-on {
+  background: #22c55e !important;
+}
+
+.ucrd-ai-toggle-knob {
+  position: absolute !important;
+  top: 0.14rem !important;
+  width: 1.25rem !important;
+  height: 1.25rem !important;
+  border-radius: 50% !important;
+  background: #fff !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12) !important;
+  transition: left 0.15s ease !important;
+  left: 0.15rem !important;
+  z-index: 2 !important;
+}
+
+.ucrd-ai-mode-toggle.ucrd-ai-toggle-on .ucrd-ai-toggle-knob {
+  left: calc(100% - 1.4rem) !important;
+}
+
+.ucrd-ai-toggle-oncap,
+.ucrd-ai-toggle-offcap {
+  position: absolute !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  font-size: 0.58rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.02em !important;
+  z-index: 1 !important;
+  pointer-events: none !important;
+}
+
+.ucrd-ai-toggle-oncap {
+  left: 0.32rem !important;
+  color: #fff !important;
+}
+
+.ucrd-ai-mode-toggle:not(.ucrd-ai-toggle-on) .ucrd-ai-toggle-oncap {
+  opacity: 0 !important;
+}
+
+.ucrd-ai-toggle-offcap {
+  right: 0.28rem !important;
+  color: #4b5563 !important;
+}
+
+.ucrd-ai-mode-toggle.ucrd-ai-toggle-on .ucrd-ai-toggle-offcap {
+  opacity: 0 !important;
+}
+
+.ucrd-ai-api-input {
+  flex: 1 1 8rem !important;
+  min-width: 0 !important;
+  max-width: 16rem !important;
+  padding: 0.38rem 0.75rem !important;
+  font-size: 0.82rem !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 999px !important;
+  background: #eef2f6 !important;
+  box-sizing: border-box !important;
+}
+
+.ucrd-ai-api-input:focus {
+  outline: 2px solid #93c5fd !important;
+  outline-offset: 1px !important;
+  border-color: #60a5fa !important;
+  background: #fff !important;
+}
+
+.ucrd-ai-top {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.75rem !important;
+  margin-bottom: 0.85rem !important;
+}
+
+.ucrd-ai-title {
+  font-size: 0.88rem !important;
+  font-weight: 700 !important;
+}
+
+.ucrd-ai-body {
+  margin: 0 0 0.85rem !important;
+  font-size: 0.86rem !important;
+  line-height: 1.45 !important;
+}
+
+.ucrd-ai-list {
+  margin: 0 0 0.85rem !important;
+  padding-left: 1.15rem !important;
+  font-size: 0.84rem !important;
+  line-height: 1.4 !important;
+}
+
+.ucrd-inline-num {
+  font-variant-numeric: tabular-nums !important;
+}
