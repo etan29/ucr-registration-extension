@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UCR Registration Extension — Privacy Policy</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      line-height: 1.6;
+      max-width: 42rem;
+      margin: 2rem auto;
+      padding: 0 1.25rem;
+      color: #1a1a1a;
+      background: #fff;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { color: #e8e8e8; background: #121212; }
+      a { color: #8ab4ff; }
+    }
+    h1 { font-size: 1.5rem; line-height: 1.3; }
+    h2 { font-size: 1.1rem; margin-top: 1.75rem; }
+    p, li { font-size: 0.95rem; }
+    .muted { opacity: 0.75; font-size: 0.9rem; }
+    a { color: #1a56db; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p class="muted"><strong>UCR Registration Extension</strong> · Last updated: May 15, 2026</p>
+
+  <p>
+    This Chrome extension is provided by independent developers. It is
+    <strong>not</strong> affiliated with, endorsed by, or operated by the
+    University of California, Riverside (UCR), MyClassGrades, RateMyProfessors,
+    or Google.
+  </p>
+
+  <h2>What the extension does</h2>
+  <p>
+    When you browse UCR class registration search at
+    <code>registrationssb.ucr.edu</code>, the extension enhances the page with
+    course GPA, professor ratings, and difficulty information. It may request
+    public data from:
+  </p>
+  <ul>
+    <li>MyClassGrades (course grade distributions)</li>
+    <li>RateMyProfessors (professor ratings and reviews)</li>
+    <li>A public Google Sheet (difficulty comments database)</li>
+  </ul>
+  <p>
+    The extension only runs on UCR registration pages listed in its manifest.
+    It does not run on other websites.
+  </p>
+
+  <h2>Data we collect</h2>
+  <p>
+    <strong>We do not operate a backend server</strong> and do not ask you to
+    create an account. We do not sell your personal information.
+  </p>
+  <p>
+    To show information faster on repeat lookups, the extension may store
+    fetched course and professor data locally on your device using Chrome’s
+    <code>storage</code> API. This cache stays in your browser until cleared
+    (extension uninstall, browser data clear, or cache expiry in the extension).
+  </p>
+  <p>
+  The extension does not transmit your browsing history or cached data to the
+  developers’ servers.
+  </p>
+
+  <h2>Third-party services</h2>
+  <p>
+    When you use class search, the extension’s background service worker sends
+    network requests directly from your browser to the third-party sites above.
+    Those services may log requests according to their own privacy policies.
+    We do not control their practices.
+  </p>
+
+  <h2>Permissions</h2>
+  <ul>
+    <li><strong>storage</strong> — local cache of fetched public data</li>
+    <li><strong>Host access</strong> — UCR registration UI plus the data sources listed above</li>
+  </ul>
+
+  <h2>Children</h2>
+  <p>
+    The extension is intended for students using UCR registration tools. It is
+    not directed at children under 13.
+  </p>
+
+  <h2>Changes</h2>
+  <p>
+    We may update this policy. The “Last updated” date at the top will change
+    when we do. Continued use of the extension after changes means you accept
+    the updated policy.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    Questions or requests:
+    <a href="https://github.com/etan29/ucr-registration-extension/issues">open an issue on GitHub</a>.
+  </p>
+
+  <p class="muted">
+    <a href="https://github.com/etan29/ucr-registration-extension">Source repository</a>
+  </p>
+</body>
+</html>
