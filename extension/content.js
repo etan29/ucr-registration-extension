@@ -859,10 +859,21 @@
     return Math.ceil(v / 100) * 100;
   }
 
+  /**
+   * Pick a spacing for y-axis ticks (1 · 10^k, 2 · 10^k, 5 · 10^k) so large counts
+   * do not produce dozens of grid lines/tick labels in a short chart (~210px).
+   */
   function mcgYTickStep(yMax) {
-    if (yMax <= 100) return 50;
-    if (yMax <= 300) return 50;
-    return 100;
+    if (!Number.isFinite(yMax) || yMax <= 0) return 1;
+    const targetTicks = 8;
+    const rawStep = yMax / Math.max(targetTicks - 1, 2);
+    const exp = Math.floor(Math.log10(Math.max(rawStep, 1e-9)));
+    const base = rawStep / 10 ** exp;
+    const nice = base <= 1 ? 1 : base <= 2 ? 2 : base <= 5 ? 5 : 10;
+    const step = nice * 10 ** exp;
+    /** Keep small aggregates readable — old behavior capped small charts at steps of 50. */
+    if (yMax <= 300) return Math.min(step, 50);
+    return step;
   }
 
   function mcgWeightedGpaFromRows(rows) {

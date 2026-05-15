@@ -492,9 +492,22 @@ body.ucrd-modal-open {
   transition: border-color 0.15s ease !important;
 }
 
+.ucrd-mcg-select-shell::after {
+  content: "" !important;
+  position: absolute !important;
+  right: 0.55rem !important;
+  top: 50% !important;
+  width: 0.45rem !important;
+  height: 0.45rem !important;
+  border-right: 2px solid #4b5563 !important;
+  border-bottom: 2px solid #4b5563 !important;
+  transform: translateY(-65%) rotate(45deg) !important;
+  pointer-events: none !important;
+}
+
 .ucrd-mcg-select-display {
   display: block !important;
-  padding: 0.45rem 0.65rem !important;
+  padding: 0.45rem 1.65rem 0.45rem 0.65rem !important;
   font-size: 0.82rem !important;
   font-weight: 600 !important;
   color: #111 !important;
@@ -537,8 +550,8 @@ body.ucrd-modal-open {
   font-size: 0.82rem !important;
   font-weight: 600 !important;
   cursor: pointer !important;
-  appearance: auto !important;
-  -webkit-appearance: menulist !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
 }
 
 /* Native list inherits transparent from the overlay select — keep options readable */
@@ -607,7 +620,9 @@ body.ucrd-modal-open {
   display: flex !important;
   flex-direction: column !important;
   justify-content: space-between !important;
-  flex: 0 0 2.25rem !important;
+  flex: 0 0 auto !important;
+  min-width: 2.75rem !important;
+  max-width: 3.75rem !important;
   font-size: 0.65rem !important;
   color: #6b7280 !important;
   padding-bottom: 1.35rem !important;
@@ -617,6 +632,8 @@ body.ucrd-modal-open {
 .ucrd-mcg-ytick {
   line-height: 1 !important;
   text-align: right !important;
+  font-variant-numeric: tabular-nums !important;
+  white-space: nowrap !important;
 }
 
 .ucrd-mcg-bar-main {
