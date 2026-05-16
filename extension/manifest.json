@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "UCR Registration Extension",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "GPA, RMP, and difficulty under Course Delivery on UCR class search, plus a detail modal. Only on registrationssb.ucr.edu.",
   "icons": {
     "16": "icon16.png",
